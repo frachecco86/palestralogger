@@ -54,7 +54,7 @@ function parseHash(): Route {
 function navigate(path: string, replace = false) {
   const target = `#/${path}`
   if (window.location.hash === target) return
-  if (replace) history.replaceState(null, '', target)
+  if (replace) window.history.replaceState(null, '', target)
   else window.location.hash = target
 }
 

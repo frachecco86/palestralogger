@@ -38,6 +38,7 @@ npm run preview
 
 Le icone si rigenerano con `npm run icons` (encoder PNG interno, nessuna dipendenza).
 Il test del layer dati (SQLite + merge sync) gira in Node: `npm run smoke`.
+Dopo `npm run build`, `npm run smoke:browser` avvia l'app in un DOM headless (happy-dom) e simula registrazione, allenamento con note, statistiche. Serve anche a verificare che il wasm `sql-wasm-browser.wasm` venga caricato.
 
 La function di sync è in `netlify/functions/sync.ts`; in locale richiede `npx netlify dev` (con sito linkato) perché Blobs non esiste in `vite dev`.
 

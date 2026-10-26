@@ -5,7 +5,7 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
-/sql-wasm.wasm
+/*.wasm
   Cache-Control: public, max-age=31536000, immutable
 
 /sw.js

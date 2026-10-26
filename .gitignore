@@ -6,7 +6,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
-public/sql-wasm.wasm
+public/*.wasm
 .netlify
 .vite
 *.log

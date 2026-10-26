@@ -1,7 +1,7 @@
 {
   "name": "palestralogger",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "scripts": {
     "dev": "node scripts/copy-wasm.mjs && vite",
@@ -11,7 +11,8 @@
     "preview": "vite preview --host 127.0.0.1",
     "icons": "node scripts/gen-icons.mjs",
     "deploy": "npm run build && npx netlify deploy --prod --dir=dist",
-    "smoke": "vite build --ssr scripts/smoke-db.ts --outDir .smoke --emptyOutDir && node .smoke/smoke-db.js"
+    "smoke": "vite build --ssr scripts/smoke-db.ts --outDir .smoke --emptyOutDir && node .smoke/smoke-db.js",
+    "smoke:browser": "node scripts/browser-smoke.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^11.1.6",
@@ -26,6 +27,8 @@
     "@types/sql.js": "^1.4.11",
     "@vitejs/plugin-react": "^6.1.2",
     "adm-zip": "^0.6.1",
+    "fake-indexeddb": "^6.2.6",
+    "happy-dom": "^21.0.4",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
