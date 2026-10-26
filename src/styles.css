@@ -1,0 +1,138 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink: #0a0c09;
+  --color-surface: #12160f;
+  --color-surface2: #1a2016;
+  --color-surface3: #222a1d;
+  --color-line: #27301f;
+  --color-line2: #33402a;
+  --color-text: #f2f5ef;
+  --color-muted: #99a394;
+  --color-faint: #6b7566;
+  --color-lime: #c8ff3d;
+  --color-lime-dim: #9ecb2c;
+  --color-mint: #7cffb2;
+  --color-danger: #ff6b5a;
+  --color-warn: #ffb86b;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --radius-xl2: 20px;
+  --radius-xl3: 26px;
+
+  --animate-rise: rise 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+  --animate-fade: fade 0.18s ease-out;
+
+  @keyframes rise {
+    from {
+      transform: translateY(14px);
+      opacity: 0.4;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  @keyframes fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scrollbar-gutter: stable;
+  }
+  body {
+    margin: 0;
+    background: var(--color-ink);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+  input[type='date']::-webkit-calendar-picker-indicator {
+    filter: invert(0.8);
+    opacity: 0.6;
+  }
+  ::selection {
+    background: var(--color-lime);
+    color: var(--color-ink);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility pb-safe {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility press {
+  transition:
+    transform 0.12s ease,
+    background-color 0.15s ease,
+    opacity 0.15s ease;
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+html {
+  background: var(--color-ink);
+}
+
+body {
+  min-height: 100dvh;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+.hero-glow {
+  background:
+    radial-gradient(120% 80% at 80% -10%, rgba(200, 255, 61, 0.18) 0%, transparent 55%),
+    radial-gradient(90% 60% at 0% 110%, rgba(124, 255, 178, 0.08) 0%, transparent 60%);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
