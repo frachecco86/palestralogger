@@ -119,18 +119,43 @@ async function bootstrap(): Promise<Database> {
 
   db.run('PRAGMA foreign_keys = ON')
   db.exec(SCHEMA_V1)
+  migrate(db)
   seedDefaults(db)
   await flush()
   return db
 }
 
+/** Migrazioni idempotenti per database creati con versioni precedenti. */
+function migrate(database: Database) {
+  try {
+    const info = database.exec('PRAGMA table_info(exercises)')
+    const columns = info[0]?.values.map((row) => String(row[1])) ?? []
+    if (columns.length > 0 && !columns.includes('updated_at')) {
+      database.exec("ALTER TABLE exercises ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
+    }
+    database.exec("UPDATE exercises SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''")
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS deleted_records (
+        kind TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        deleted_at TEXT NOT NULL,
+        PRIMARY KEY (kind, record_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_deleted_user ON deleted_records(user_id, deleted_at);
+    `)
+  } catch (err) {
+    console.error('[db] migrazione fallita', err)
+  }
+}
+
 function seedDefaults(database: Database) {
   const now = new Date().toISOString()
   const stmt = database.prepare(
-    'INSERT OR IGNORE INTO exercises (id, user_id, name, muscle, equipment, is_default, created_at) VALUES (?, NULL, ?, ?, ?, 1, ?)',
+    'INSERT OR IGNORE INTO exercises (id, user_id, name, muscle, equipment, is_default, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, 1, ?, ?)',
   )
   for (const ex of SEED_EXERCISES) {
-    stmt.run([ex.id, ex.name, ex.muscle, ex.equipment, now])
+    stmt.run([ex.id, ex.name, ex.muscle, ex.equipment, now, now])
   }
   stmt.free()
 }
@@ -210,6 +235,7 @@ export async function importDatabaseBytes(bytes: Uint8Array): Promise<void> {
   db = new SQL.Database(bytes)
   db.run('PRAGMA foreign_keys = ON')
   db.exec(SCHEMA_V1)
+  migrate(db)
   seedDefaults(db)
   await flush()
   notify()

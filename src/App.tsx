@@ -14,6 +14,7 @@ import { BottomNav, type Tab } from './components/Nav'
 import { Button, Icon } from './components/ui'
 import { Toaster } from './components/Toaster'
 import { todayISO } from './lib/dates'
+import { getSyncCode, isSyncing, syncNow } from './lib/sync'
 
 type Route =
   | { name: 'home' | 'calendar' | 'stats' | 'exercises' | 'profile' }
@@ -116,6 +117,37 @@ export default function App() {
       setSessionId(null)
     }
   }, [sessionId, ready, user])
+
+  // sync automatica: all'avvio, al ritorno in foreground e dopo le modifiche
+  const userId = user?.id
+  useEffect(() => {
+    if (!userId || !getSyncCode(userId)) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const run = () => {
+      if (!getSyncCode(userId) || isSyncing()) return
+      void syncNow(userId).catch(() => {
+        /* l'errore viene mostrato nella card Sync */
+      })
+    }
+    const start = setTimeout(run, 1200)
+    const unsubscribe = subscribe(() => {
+      if (!getSyncCode(userId) || isSyncing()) return
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(run, 5000)
+    })
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') run()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      clearTimeout(start)
+      if (timer) clearTimeout(timer)
+      unsubscribe()
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [userId])
 
   if (bootError) {
     return (

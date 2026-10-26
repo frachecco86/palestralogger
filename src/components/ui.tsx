@@ -36,6 +36,9 @@ export type IconName =
   | 'lock'
   | 'target'
   | 'scale'
+  | 'cloud'
+  | 'copy'
+  | 'refresh'
 
 const PATHS: Record<IconName, ReactNode> = {
   home: <path d="M3.5 10.5 12 3.5l8.5 7M5.5 9.5V20h13V9.5" />,
@@ -104,6 +107,14 @@ const PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   scale: <path d="M12 4v16M7 7.5 4.5 14h5L7 7.5Zm10 0L14.5 14h5L17 7.5Z" />,
+  cloud: <path d="M7 18h9.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.1 9.2 4.4 4.4 0 0 0 7 18Z" />,
+  copy: (
+    <>
+      <rect x="9" y="9" width="11" height="11" rx="2.2" />
+      <path d="M15 9V6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15H9" />
+    </>
+  ),
+  refresh: <path d="M20 11a8 8 0 0 0-13.7-4.6L4 8.5M4 5v3.5H7.5M4 13a8 8 0 0 0 13.7 4.6L20 15.5M20 19v-3.5h-3.5" />,
 }
 
 export function Icon({

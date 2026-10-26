@@ -14,6 +14,7 @@
     "smoke": "vite build --ssr scripts/smoke-db.ts --outDir .smoke --emptyOutDir && node .smoke/smoke-db.js"
   },
   "dependencies": {
+    "@netlify/blobs": "^11.1.6",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "sql.js": "^1.15.2"

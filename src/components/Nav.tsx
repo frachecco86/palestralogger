@@ -34,6 +34,12 @@ export function WorkoutCard({
         <span className="flex items-center gap-1.5">
           <span className="block truncate text-[14px] font-semibold">{title}</span>
         </span>
+        {workout.notes && (
+          <span className="mt-0.5 flex items-start gap-1 text-[10.5px] italic text-faint">
+            <Icon name="edit" size={10} className="mt-[2px] shrink-0" />
+            <span className="truncate">{workout.notes}</span>
+          </span>
+        )}
         <span className="mt-0.5 flex items-center gap-2 text-[11.5px] text-muted">
           <span className="inline-flex items-center gap-1">
             <Icon name="dumbbell" size={12} /> {workout.exercises}

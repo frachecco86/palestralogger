@@ -309,6 +309,20 @@ export function WorkoutEditor({
             className="w-full rounded-xl bg-surface2 border border-line2 px-3 py-2.5 text-[14px] outline-none placeholder:text-faint focus:border-lime/60"
           />
 
+          <div>
+            <div className="mb-1 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-faint">
+              <Icon name="edit" size={11} /> Note della sessione
+            </div>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              maxLength={500}
+              placeholder="Come è andata? Recupero, tecnica, sensazioni…"
+              className="w-full resize-none rounded-xl bg-surface2 border border-line2 px-3 py-2.5 text-[13px] outline-none placeholder:text-faint focus:border-lime/50"
+            />
+          </div>
+
           {error && (
             <p className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">
               {error}
@@ -439,21 +453,6 @@ export function WorkoutEditor({
         >
           <Icon name="plus" size={18} /> Aggiungi esercizio
         </button>
-
-        {/* note */}
-        <div className="mt-4">
-          <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-muted">
-            Note <span className="normal-case text-faint">(facoltative)</span>
-          </label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            maxLength={400}
-            placeholder="Sensazioni, recupero, note tecniche…"
-            className="w-full resize-none rounded-2xl bg-surface border border-line px-3.5 py-3 text-[13px] outline-none placeholder:text-faint focus:border-lime/50"
-          />
-        </div>
 
         {workoutId && (
           <button

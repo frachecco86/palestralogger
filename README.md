@@ -13,6 +13,7 @@ I dati vivono in un database **SQLite** (compilato in WebAssembly) salvato nel d
 - **Calendario**: vista mensile con intensità del volume per giorno, selezione giorno, elenco allenamenti e aggiunta rapida.
 - **Statistiche**: allenamenti, volume, serie, ripetizioni, giorni attivi, streak attuale e record, volume per gruppo muscolare, top esercizi, record stimati 1RM (Epley), grafico ultime 8 settimane.
 - **Dettaglio esercizio**: storico carico massimo per sessione, sessioni, volume, record.
+- **Sync multi-dispositivo (opzionale)**: codice segreto di 16 caratteri, sincronizzazione automatica di profilo, esercizi e allenamenti tramite Netlify Functions + Netlify Blobs. Nessun account, nessuna email.
 - **Backup/ripristino**: esporta e importa l'intero database `.sqlite`.
 - **PWA**: manifest, service worker, funzionamento offline, safe-area iOS, tema scuro.
 
@@ -22,7 +23,8 @@ I dati vivono in un database **SQLite** (compilato in WebAssembly) salvato nel d
 - Tailwind CSS 4
 - SQLite via [`sql.js`](https://github.com/sql-js/sql.js) (WASM), persistito su IndexedDB
 - `vite-plugin-pwa` (Workbox)
-- Hosting: Netlify (build statica)
+- Sync: Netlify Functions + Netlify Blobs (key-value, forte consistenza)
+- Hosting: Netlify (build statica + 1 function)
 
 ## Sviluppo
 
@@ -35,6 +37,9 @@ npm run preview
 ```
 
 Le icone si rigenerano con `npm run icons` (encoder PNG interno, nessuna dipendenza).
+Il test del layer dati (SQLite + merge sync) gira in Node: `npm run smoke`.
+
+La function di sync è in `netlify/functions/sync.ts`; in locale richiede `npx netlify dev` (con sito linkato) perché Blobs non esiste in `vite dev`.
 
 ## Struttura
 
@@ -56,10 +61,26 @@ workouts(id, user_id, date, name, notes, created_at, updated_at)
 workout_sets(id, workout_id, exercise_id, entry_index, set_index, reps, weight, rpe)
 ```
 
+## Sincronizzazione
+
+1. Profilo → **Sync cloud → Attiva sincronizzazione**: viene generato un codice tipo `K7FQ-2M9P-XR4T-8WHD`.
+2. Sul secondo dispositivo: schermata di accesso → **Hai già un codice sync?** (o Profilo → Sync) → inserisci il codice.
+3. Da quel momento la sync parte all'avvio, al ritorno in foreground e pochi secondi dopo ogni modifica.
+
+Come funziona:
+
+- La copia locale SQLite resta la fonte primaria; la function conserva solo l'ultimo snapshot JSON per codice.
+- Il merge è **last-write-wins per entità** (allenamenti ed esercizi), con tombstone per le cancellazioni, quindi modifiche fatte su dispositivi diversi confluiscono senza duplicati.
+- Revisione ottimistica: se due dispositivi scrivono insieme, il client rilegge, rifà il merge e ripubblica.
+- Il codice non viene mai salvato sul server in chiaro: la chiave del blob è lo SHA-256 del codice.
+- I dati sono cifrati in transito (HTTPS) ma **non end-to-end**: Netlify Blobs li conserva leggibili lato server. Chi conosce il codice può leggerli e modificarli, quindi va trattato come una password.
+- Disattivando la sync puoi scegliere se rimuovere solo il collegamento locale o eliminare anche la copia cloud.
+
 ## Privacy e limiti
 
-I dati **non lasciano il dispositivo**: non c'è backend né sincronizzazione tra dispositivi.
+Senza sync attiva i dati **non lasciano il dispositivo**. Con la sync attiva viaggiano verso Netlify Blobs, protetti dal codice segreto.
 Il PIN protegge l'accesso all'app sul telefono, non cifra il database: per una protezione reale usare il blocco schermo del dispositivo.
+Le cancellazioni vengono sincronizzate tramite tombstone conservati per 12 mesi.
 
 Per il backup usare **Profilo → Scarica backup**. Il file `.sqlite` può essere riaperto con qualunque strumento SQLite.
 

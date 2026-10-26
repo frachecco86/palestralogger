@@ -5,6 +5,8 @@ import { exportDatabaseBytes, importDatabaseBytes } from '../db/db'
 import { todayISO } from '../lib/dates'
 import { formatKg, initials } from '../lib/format'
 import { toast, useLiveData } from '../lib/live'
+import { disableSync } from '../lib/sync'
+import { SyncCard } from '../components/SyncCard'
 import {
   Button,
   Card,
@@ -230,8 +232,13 @@ export function ProfileScreen({
       </Card>
 
       <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-        Dati
+        Sync e dati
       </p>
+      <SyncCard user={user} />
+
+      <div className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+        Backup
+      </div>
       <Card className="divide-y divide-line overflow-hidden">
         <Row
           icon="download"
@@ -360,9 +367,16 @@ export function ProfileScreen({
               variant="danger"
               full
               onClick={() => {
-                deleteUser(user.id)
-                toast('Profilo eliminato')
-                onLogout()
+                void (async () => {
+                  try {
+                    await disableSync(user.id, { deleteRemote: true })
+                  } catch {
+                    /* offline: elimino comunque la copia locale */
+                  }
+                  deleteUser(user.id)
+                  toast('Profilo eliminato')
+                  onLogout()
+                })()
               }}
             >
               Elimina tutto

@@ -50,6 +50,7 @@ export interface Exercise {
   equipment: string
   isDefault: boolean
   createdAt: string
+  updatedAt: string
 }
 
 export interface Workout {

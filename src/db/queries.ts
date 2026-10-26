@@ -93,6 +93,7 @@ export function deleteUser(userId: string): void {
     db.run('DELETE FROM workout_sets WHERE workout_id IN (SELECT id FROM workouts WHERE user_id = ?)', [userId])
     db.run('DELETE FROM workouts WHERE user_id = ?', [userId])
     db.run('DELETE FROM exercises WHERE user_id = ?', [userId])
+    db.run('DELETE FROM deleted_records WHERE user_id = ?', [userId])
     db.run('DELETE FROM users WHERE id = ?', [userId])
   })
 }
@@ -112,6 +113,7 @@ interface RawExercise {
   equipment: string
   is_default: number
   created_at: string
+  updated_at: string
 }
 
 const mapExercise = (r: RawExercise): Exercise => ({
@@ -122,6 +124,7 @@ const mapExercise = (r: RawExercise): Exercise => ({
   equipment: r.equipment,
   isDefault: r.is_default === 1,
   createdAt: r.created_at,
+  updatedAt: r.updated_at || r.created_at,
 })
 
 export function listExercises(userId: string): Exercise[] {
@@ -152,6 +155,7 @@ export function createExercise(
   )
   if (dup) throw new Error('Questo esercizio esiste già')
 
+  const now = new Date().toISOString()
   const ex: Exercise = {
     id: newId(),
     userId,
@@ -159,11 +163,12 @@ export function createExercise(
     muscle,
     equipment: equipment.trim(),
     isDefault: false,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
   }
   mutate(
-    'INSERT INTO exercises (id, user_id, name, muscle, equipment, is_default, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)',
-    [ex.id, ex.userId, ex.name, ex.muscle, ex.equipment, ex.createdAt],
+    'INSERT INTO exercises (id, user_id, name, muscle, equipment, is_default, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
+    [ex.id, ex.userId, ex.name, ex.muscle, ex.equipment, ex.createdAt, ex.updatedAt],
   )
   return ex
 }
@@ -176,7 +181,13 @@ export function deleteExercise(userId: string, id: string): void {
   if ((used?.n ?? 0) > 0) {
     throw new Error('Esercizio usato in allenamenti passati: non può essere eliminato')
   }
-  mutate('DELETE FROM exercises WHERE id = ? AND user_id = ? AND is_default = 0', [id, userId])
+  tx((db) => {
+    db.run('DELETE FROM exercises WHERE id = ? AND user_id = ? AND is_default = 0', [id, userId])
+    db.run(
+      'INSERT OR REPLACE INTO deleted_records (kind, record_id, user_id, deleted_at) VALUES (?, ?, ?, ?)',
+      ['exercise', id, userId, new Date().toISOString()],
+    )
+  })
 }
 
 // ---------- Workouts ----------
@@ -291,6 +302,7 @@ export function getWorkout(userId: string, workoutId: string): WorkoutDetail | n
         equipment: '',
         isDefault: true,
         createdAt: '',
+        updatedAt: '',
       }
       entry = { exercise, sets: [] }
       entries.push(entry)
@@ -390,6 +402,10 @@ export function deleteWorkout(userId: string, workoutId: string): void {
   tx((db) => {
     db.run('DELETE FROM workout_sets WHERE workout_id = ?', [workoutId])
     db.run('DELETE FROM workouts WHERE id = ? AND user_id = ?', [workoutId, userId])
+    db.run(
+      'INSERT OR REPLACE INTO deleted_records (kind, record_id, user_id, deleted_at) VALUES (?, ?, ?, ?)',
+      ['workout', workoutId, userId, new Date().toISOString()],
+    )
   })
 }
 

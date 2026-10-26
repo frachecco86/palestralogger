@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Icon, cx, inputClass } from '../components/ui'
+import { Button, Icon, Sheet, cx, inputClass } from '../components/ui'
 import { checkPin, createUser, listUsers } from '../db/queries'
 import { importDatabaseBytes } from '../db/db'
 import type { User } from '../lib/types'
@@ -7,6 +7,7 @@ import { formatDateLong, todayISO } from '../lib/dates'
 import { initials } from '../lib/format'
 import { setLastProfileId, setSessionUserId } from '../lib/session'
 import { toast } from '../lib/live'
+import { isValidSyncCode, linkDevice, normalizeSyncCode } from '../lib/sync'
 
 function Keypad({
   value,
@@ -96,6 +97,12 @@ export function AuthScreen({ onLogin }: { onLogin: (userId: string) => void }) {
   const [newPin, setNewPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // collegamento di un altro dispositivo tramite codice sync
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkCode, setLinkCode] = useState('')
+  const [linkBusy, setLinkBusy] = useState(false)
+  const [linkError, setLinkError] = useState<string | null>(null)
 
   const selectedRef = useRef<User | null>(null)
   selectedRef.current = selected
@@ -268,15 +275,28 @@ export function AuthScreen({ onLogin }: { onLogin: (userId: string) => void }) {
                 {busy ? 'Creazione…' : 'Crea profilo'}
               </Button>
 
-              {users.length === 0 && (
+              <div className="flex flex-col items-center gap-1 pt-1">
                 <button
                   type="button"
-                  onClick={() => fileRef.current?.click()}
+                  onClick={() => {
+                    setLinkCode('')
+                    setLinkError(null)
+                    setLinkOpen(true)
+                  }}
                   className="w-full text-[12.5px] text-muted flex items-center justify-center gap-1.5 py-1"
                 >
-                  <Icon name="upload" size={14} /> Ripristina un backup .sqlite
+                  <Icon name="cloud" size={14} /> Hai già un codice sync?
                 </button>
-              )}
+                {users.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="w-full text-[12.5px] text-muted flex items-center justify-center gap-1.5 py-1"
+                  >
+                    <Icon name="upload" size={14} /> Ripristina un backup .sqlite
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ) : (
@@ -325,13 +345,26 @@ export function AuthScreen({ onLogin }: { onLogin: (userId: string) => void }) {
                   <Icon name="plus" size={16} /> Nuovo profilo
                 </Button>
 
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="mt-4 text-[12px] text-faint flex items-center justify-center gap-1.5"
-                >
-                  <Icon name="upload" size={13} /> Ripristina backup
-                </button>
+                <div className="mt-4 flex flex-col items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLinkCode('')
+                      setLinkError(null)
+                      setLinkOpen(true)
+                    }}
+                    className="text-[12.5px] text-muted flex items-center justify-center gap-1.5"
+                  >
+                    <Icon name="cloud" size={14} /> Collega un dispositivo con codice sync
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="text-[12px] text-faint flex items-center justify-center gap-1.5"
+                  >
+                    <Icon name="upload" size={13} /> Ripristina backup .sqlite
+                  </button>
+                </div>
               </>
             ) : (
               <div className="mt-8 flex-1 flex flex-col">
@@ -401,6 +434,63 @@ export function AuthScreen({ onLogin }: { onLogin: (userId: string) => void }) {
           </p>
         </div>
       </div>
+
+      <Sheet
+        open={linkOpen}
+        onClose={() => {
+          setLinkOpen(false)
+          setLinkError(null)
+        }}
+        title="Collega un dispositivo"
+      >
+        <div className="pb-5">
+          <p className="text-[12.5px] leading-relaxed text-muted">
+            Inserisci il codice di sincronizzazione creato sull'altro telefono (Profilo → Sync
+            cloud). Scaricheremo profilo, esercizi e allenamenti.
+          </p>
+
+          <input
+            className={cx(inputClass, 'mt-3 text-center font-mono text-[15px] tracking-[0.12em] uppercase')}
+            placeholder="XXXX-XXXX-XXXX-XXXX"
+            value={linkCode}
+            inputMode="text"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(e) => setLinkCode(normalizeSyncCode(e.target.value))}
+          />
+
+          {linkError && <p className="mt-2 text-[12px] text-danger">{linkError}</p>}
+
+          <Button
+            size="lg"
+            full
+            className="mt-3"
+            disabled={linkBusy || !isValidSyncCode(linkCode)}
+            onClick={async () => {
+              setLinkBusy(true)
+              setLinkError(null)
+              try {
+                const userId = await linkDevice(linkCode)
+                setSessionUserId(userId)
+                setLastProfileId(userId)
+                onLogin(userId)
+              } catch (e) {
+                setLinkError(e instanceof Error ? e.message : 'Collegamento non riuscito')
+              } finally {
+                setLinkBusy(false)
+              }
+            }}
+          >
+            {linkBusy ? 'Collegamento…' : 'Collega e scarica i dati'}
+          </Button>
+
+          <p className="mt-3 flex gap-1.5 text-[11px] leading-relaxed text-faint">
+            <Icon name="lock" size={13} className="mt-0.5 shrink-0" />
+            Il codice è la chiave dei tuoi dati: trattalo come una password.
+          </p>
+        </div>
+      </Sheet>
 
       <input
         ref={fileRef}

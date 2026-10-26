@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS exercises (
   equipment TEXT NOT NULL DEFAULT '',
   is_default INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT '',
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -49,6 +50,16 @@ CREATE INDEX IF NOT EXISTS idx_workouts_user_date ON workouts(user_id, date DESC
 CREATE INDEX IF NOT EXISTS idx_sets_workout ON workout_sets(workout_id);
 CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);
 CREATE INDEX IF NOT EXISTS idx_exercises_user ON exercises(user_id);
+
+CREATE TABLE IF NOT EXISTS deleted_records (
+  kind TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  deleted_at TEXT NOT NULL,
+  PRIMARY KEY (kind, record_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_deleted_user ON deleted_records(user_id, deleted_at);
 `
 
 type Seed = [slug: string, name: string, muscle: Muscle, equipment: string]
