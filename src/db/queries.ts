@@ -332,7 +332,7 @@ export function saveWorkout(userId: string, input: SaveWorkoutInput): string {
     }))
     .filter((e) => e.sets.length > 0)
 
-  if (entries.length === 0) throw new Error('Aggiungi almeno un esercizio con una serie')
+  if (entries.length === 0) throw new Error("Inserisci almeno una serie con ripetizioni maggiori di zero")
 
   const now = new Date().toISOString()
   let workoutId = input.id ?? ''
