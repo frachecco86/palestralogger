@@ -10,6 +10,12 @@
   node_bundler = "esbuild"
 
 [[redirects]]
+  from = "/api/social"
+  to = "/.netlify/functions/social"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/sync"
   to = "/.netlify/functions/sync"
   status = 200

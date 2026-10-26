@@ -19,7 +19,7 @@ import {
   type IconName,
 } from '../components/ui'
 
-const APP_VERSION = '1.1.2'
+const APP_VERSION = '1.2.0'
 
 function Row({
   icon,
@@ -69,11 +69,13 @@ export function ProfileScreen({
   onLogout,
   onUserChanged,
   onGoExercises,
+  onGoFriends,
 }: {
   user: User
   onLogout: () => void
   onUserChanged: () => void
   onGoExercises: () => void
+  onGoFriends: () => void
 }) {
   const stats = useLiveData(() => getStats(user.id, todayISO()), [user.id])
   const [renameOpen, setRenameOpen] = useState(false)
@@ -228,6 +230,18 @@ export function ProfileScreen({
             setName(user.name)
             setRenameOpen(true)
           }}
+        />
+      </Card>
+
+      <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+        Social
+      </p>
+      <Card className="overflow-hidden">
+        <Row
+          icon="users"
+          label="Amici"
+          sub="Condividi allenamenti e guarda i progressi"
+          onClick={onGoFriends}
         />
       </Card>
 

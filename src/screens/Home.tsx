@@ -13,6 +13,7 @@ export function HomeScreen({
   onGoCalendar,
   onGoStats,
   onGoProfile,
+  onGoFriends,
 }: {
   user: User
   onNew: (date?: string) => void
@@ -20,6 +21,7 @@ export function HomeScreen({
   onGoCalendar: () => void
   onGoStats: () => void
   onGoProfile: () => void
+  onGoFriends: () => void
 }) {
   const today = todayISO()
   const stats = useLiveData(() => getStats(user.id, today), [user.id, today])
@@ -49,14 +51,24 @@ export function HomeScreen({
             Ciao, {firstName}
           </h1>
         </div>
-        <button
-          type="button"
-          onClick={onGoProfile}
-          aria-label="Profilo"
-          className="press h-10 w-10 shrink-0 rounded-2xl bg-lime/15 border border-lime/30 text-lime text-[13px] font-bold flex items-center justify-center"
-        >
-          {initials(user.name)}
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onGoFriends}
+            aria-label="Amici"
+            className="press flex h-10 w-10 items-center justify-center rounded-2xl bg-surface border border-line text-muted hover:text-text"
+          >
+            <Icon name="users" size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={onGoProfile}
+            aria-label="Profilo"
+            className="press h-10 w-10 shrink-0 rounded-2xl bg-lime/15 border border-lime/30 text-lime text-[13px] font-bold flex items-center justify-center"
+          >
+            {initials(user.name)}
+          </button>
+        </div>
       </header>
 
       {/* chips */}

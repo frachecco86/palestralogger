@@ -10,22 +10,32 @@ import { StatsScreen } from './screens/Stats'
 import { ExercisesScreen } from './screens/Exercises'
 import { ProfileScreen } from './screens/Profile'
 import { WorkoutEditor } from './screens/WorkoutEditor'
+import { FriendsScreen } from './screens/Friends'
+import { FriendDetailScreen } from './screens/FriendDetail'
+import { Footer } from './components/Footer'
 import { BottomNav, type Tab } from './components/Nav'
 import { Button, Icon } from './components/ui'
 import { Toaster } from './components/Toaster'
 import { todayISO } from './lib/dates'
 import { getSyncCode, isSyncing, syncNow } from './lib/sync'
+import { isSocialEnabled, publishSocial } from './lib/social'
 
 type Route =
   | { name: 'home' | 'calendar' | 'stats' | 'exercises' | 'profile' }
   | { name: 'new'; date?: string; exerciseId?: string }
   | { name: 'edit'; id: string }
+  | { name: 'friends' }
+  | { name: 'friend'; id: string }
 
 function parseHash(): Route {
   const raw = window.location.hash.replace(/^#\/?/, '')
   const [path, qs] = raw.split('?')
   const params = new URLSearchParams(qs ?? '')
 
+  if (path === 'friends') return { name: 'friends' }
+  if (path.startsWith('friends/')) {
+    return { name: 'friend', id: path.slice('friends/'.length) }
+  }
   if (path.startsWith('w/')) {
     const id = path.slice(2)
     if (id === 'new' || id === '') {
@@ -150,6 +160,36 @@ export default function App() {
     }
   }, [userId])
 
+  // pubblica lo snapshot amici quando i dati cambiano (se la funzione è attiva)
+  useEffect(() => {
+    if (!userId) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const run = () => {
+      if (!isSocialEnabled(userId) || isSyncing()) return
+      void publishSocial(userId).catch(() => {
+        /* errore mostrato nella schermata Amici */
+      })
+    }
+    const start = setTimeout(run, 3500)
+    const unsubscribe = subscribe(() => {
+      if (!isSocialEnabled(userId) || isSyncing()) return
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(run, 10_000)
+    })
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') run()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      clearTimeout(start)
+      if (timer) clearTimeout(timer)
+      unsubscribe()
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [userId])
+
   if (bootError) {
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center gap-4 px-6 text-center">
@@ -184,6 +224,8 @@ export default function App() {
   }
 
   const isEditor = route.name === 'new' || route.name === 'edit'
+  const isSubPage = route.name === 'friends' || route.name === 'friend'
+  const hideChrome = isEditor || isSubPage
 
   const goTab = (t: Tab) => navigate(t === 'home' ? 'home' : t === 'calendar' ? 'cal' : t === 'stats' ? 'stats' : 'ex')
 
@@ -223,6 +265,10 @@ export default function App() {
               navigate('me')
               setRoute({ name: 'profile' })
             }}
+            onGoFriends={() => {
+              navigate('friends')
+              setRoute({ name: 'friends' })
+            }}
           />
         )}
 
@@ -256,6 +302,39 @@ export default function App() {
               navigate('ex')
               setRoute({ name: 'exercises' })
             }}
+            onGoFriends={() => {
+              navigate('friends')
+              setRoute({ name: 'friends' })
+            }}
+          />
+        )}
+
+        {route.name === 'friends' && (
+          <FriendsScreen
+            user={user}
+            onBack={() => {
+              navigate('home', true)
+              setRoute({ name: 'home' })
+            }}
+            onOpenFriend={(friendUid) => {
+              navigate('friends/' + friendUid)
+              setRoute({ name: 'friend', id: friendUid })
+            }}
+            onGoProfile={() => {
+              navigate('me')
+              setRoute({ name: 'profile' })
+            }}
+          />
+        )}
+
+        {route.name === 'friend' && (
+          <FriendDetailScreen
+            user={user}
+            friendUid={route.id}
+            onBack={() => {
+              navigate('friends', true)
+              setRoute({ name: 'friends' })
+            }}
           />
         )}
 
@@ -280,12 +359,11 @@ export default function App() {
           />
         )}
 
-        {!isEditor && (
-          <div className="h-24" aria-hidden="true" />
-        )}
+        {!hideChrome && <Footer />}
+        {!hideChrome && <div className="h-20" aria-hidden="true" />}
       </main>
 
-      {!isEditor && (
+      {!hideChrome && (
         <BottomNav
           tab={
             route.name === 'calendar'

@@ -39,6 +39,8 @@ export type IconName =
   | 'cloud'
   | 'copy'
   | 'refresh'
+  | 'users'
+  | 'share'
 
 const PATHS: Record<IconName, ReactNode> = {
   home: <path d="M3.5 10.5 12 3.5l8.5 7M5.5 9.5V20h13V9.5" />,
@@ -115,6 +117,21 @@ const PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   refresh: <path d="M20 11a8 8 0 0 0-13.7-4.6L4 8.5M4 5v3.5H7.5M4 13a8 8 0 0 0 13.7 4.6L20 15.5M20 19v-3.5h-3.5" />,
+  users: (
+    <>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3.5 19c.4-3 2.8-4.8 5.5-4.8s5.1 1.8 5.5 4.8" />
+      <path d="M15.8 5.4a3 3 0 0 1 0 5.8M17.4 14.6c2 .5 3.3 2 3.6 4.4" />
+    </>
+  ),
+  share: (
+    <>
+      <circle cx="18" cy="5.5" r="2.5" />
+      <circle cx="6" cy="12" r="2.5" />
+      <circle cx="18" cy="18.5" r="2.5" />
+      <path d="m8.2 10.8 7.6-4M8.2 13.2l7.6 4" />
+    </>
+  ),
 }
 
 export function Icon({

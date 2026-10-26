@@ -7,6 +7,7 @@ import { formatDateLong, todayISO } from '../lib/dates'
 import { initials } from '../lib/format'
 import { setLastProfileId, setSessionUserId } from '../lib/session'
 import { toast } from '../lib/live'
+import { Footer } from '../components/Footer'
 import { isValidSyncCode, linkDevice, normalizeSyncCode } from '../lib/sync'
 
 function Keypad({
@@ -432,6 +433,7 @@ export function AuthScreen({ onLogin }: { onLogin: (userId: string) => void }) {
           <p className="text-[11px] text-faint">
             {formatDateLong(todayISO())} · SQLite locale · 100% offline
           </p>
+          <Footer className="pt-2" />
         </div>
       </div>
 

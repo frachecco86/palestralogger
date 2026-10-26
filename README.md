@@ -13,6 +13,7 @@ I dati vivono in un database **SQLite** (compilato in WebAssembly) salvato nel d
 - **Calendario**: vista mensile con intensità del volume per giorno, selezione giorno, elenco allenamenti e aggiunta rapida.
 - **Statistiche**: allenamenti, volume, serie, ripetizioni, giorni attivi, streak attuale e record, volume per gruppo muscolare, top esercizi, record stimati 1RM (Epley), grafico ultime 8 settimane.
 - **Dettaglio esercizio**: storico carico massimo per sessione, sessioni, volume, record.
+- **Amici**: codice amico separato dal codice sync, richiesta + accettazione, allenamenti e statistiche visibili solo agli amici reciproci. Note condivisibili con un toggle.
 - **Sync multi-dispositivo (opzionale)**: codice segreto di 16 caratteri, sincronizzazione automatica di profilo, esercizi e allenamenti tramite Netlify Functions + Netlify Blobs. Nessun account, nessuna email.
 - **Backup/ripristino**: esporta e importa l'intero database `.sqlite`.
 - **PWA**: manifest, service worker, funzionamento offline, safe-area iOS, tema scuro.
@@ -23,7 +24,7 @@ I dati vivono in un database **SQLite** (compilato in WebAssembly) salvato nel d
 - Tailwind CSS 4
 - SQLite via [`sql.js`](https://github.com/sql-js/sql.js) (WASM), persistito su IndexedDB
 - `vite-plugin-pwa` (Workbox)
-- Sync: Netlify Functions + Netlify Blobs (key-value, forte consistenza)
+- Sync e amici: Netlify Functions + Netlify Blobs (key-value, API centrale per letture coerenti)
 - Hosting: Netlify (build statica + 1 function)
 
 ## Sviluppo
@@ -77,6 +78,22 @@ Come funziona:
 - Il codice non viene mai salvato sul server in chiaro: la chiave del blob è lo SHA-256 del codice.
 - I dati sono cifrati in transito (HTTPS) ma **non end-to-end**: Netlify Blobs li conserva leggibili lato server. Chi conosce il codice può leggerli e modificarli, quindi va trattato come una password.
 - Disattivando la sync puoi scegliere se rimuovere solo il collegamento locale o eliminare anche la copia cloud.
+
+## Amici — come si diventa amici
+
+1. Profilo → **Sync cloud** deve essere attiva (l'identità dell'account è la sync).
+2. Profilo → **Amici → Attiva amici**: viene generato un **codice amico** tipo `K7FQ-2M9P-XR4` (12 caratteri).
+3. Condividi il codice (tasto Condividi/Copia) con la persona che vuoi aggiungere.
+4. L'altra persona apre **Amici → Aggiungi un amico**, inserisce il codice e invia la richiesta.
+5. Tu la vedi in **Richieste** e scegli **Accetta** o **Rifiuta**.
+6. Da quel momento vedete reciprocamente: riepilogo settimanale, streak, volume totale, gruppi muscolari, ultimi 20 allenamenti con esercizi e serie, top esercizi.
+
+Privacy:
+
+- Il codice amico serve solo a inviare una richiesta: **non dà accesso ai dati**.
+- Lo snapshot condiviso contiene solo ciò che il client pubblica (ultimi 20 allenamenti); le note sono escluse di default e si attivano con il toggle.
+- Rimuovendo un amico o disattivando gli amici, l'accesso ai dati futuri termina; gli amici non ricevono più aggiornamenti.
+- Lo snapshot viene ripubblicato automaticamente pochi secondi dopo le modifiche e all'apertura dell'app.
 
 ## Privacy e limiti
 
