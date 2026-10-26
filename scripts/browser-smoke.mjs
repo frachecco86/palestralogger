@@ -1,5 +1,5 @@
 import { Window } from 'happy-dom'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const window = new Window({ url: 'https://palestralogger.netlify.app/' })
@@ -28,11 +28,29 @@ Object.defineProperty(window.navigator, 'serviceWorker', {
 
 window.document.body.innerHTML = '<div id="root"></div>'
 
+const LIVE = process.env.LIVE === '1'
+const ORIGIN = 'https://palestralogger.netlify.app'
 const realFetch = globalThis.fetch
+
+let bundlePath = resolve('dist/assets', readdirSync('dist/assets').find((f) => f.startsWith('index-') && f.endsWith('.js')))
+if (LIVE) {
+  const html = await (await realFetch(ORIGIN + '/')).text()
+  const src = html.match(/\/assets\/index-[^"']+\.js/)[0]
+  const code = await (await realFetch(ORIGIN + src)).text()
+  bundlePath = '/tmp/palestralogger-prod-bundle.mjs'
+  writeFileSync(bundlePath, code)
+  console.log('live bundle:', src)
+}
+
 globalThis.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : input.url
   const file = url.split('/').pop() || ''
   if (file.endsWith('.wasm')) {
+    if (LIVE) {
+      const res = await realFetch(ORIGIN + '/' + file)
+      console.log('live wasm:', res.status, res.headers.get('content-type'))
+      return res
+    }
     return new Response(readFileSync(resolve('dist', file)), {
       status: 200,
       headers: { 'content-type': 'application/wasm' },
@@ -42,8 +60,7 @@ globalThis.fetch = async (input, init) => {
   return realFetch(input, init)
 }
 window.fetch = globalThis.fetch
-
-const asset = readdirSync('dist/assets').find((f) => f.startsWith('index-') && f.endsWith('.js'))
+const asset = bundlePath.split('/').pop()
 const errors = []
 window.addEventListener('error', (e) => errors.push('window.error: ' + (e.message || e.error)))
 process.on('unhandledRejection', (e) => errors.push('unhandled: ' + (e && e.message ? e.message : String(e))))
@@ -70,7 +87,7 @@ async function clickText(text, { exact = false } = {}) {
   await wait(350)
 }
 
-await import(resolve('dist/assets', asset))
+await import(bundlePath)
 await wait(1200)
 
 console.log('1. avvio:', body().slice(0, 60))
