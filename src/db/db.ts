@@ -90,9 +90,17 @@ function scheduleSave() {
 
 // ---------- Inizializzazione ----------
 
+// In browser il wasm viaggia con l'app; nei test Node si usa quello di node_modules.
+function wasmFile(file: string): string {
+  if (typeof window === 'undefined' && typeof process !== 'undefined') {
+    return `${process.cwd()}/node_modules/sql.js/dist/${file}`
+  }
+  return `${import.meta.env.BASE_URL}${file}`
+}
+
 async function bootstrap(): Promise<Database> {
   const SQL = await initSqlJs({
-    locateFile: (file: string) => `${import.meta.env.BASE_URL}${file}`,
+    locateFile: wasmFile,
   })
 
   const stored = await idbGet()
@@ -197,7 +205,7 @@ export async function importDatabaseBytes(bytes: Uint8Array): Promise<void> {
   }
   await flush()
   const SQL = await initSqlJs({
-    locateFile: (file: string) => `${import.meta.env.BASE_URL}${file}`,
+    locateFile: wasmFile,
   })
   db = new SQL.Database(bytes)
   db.run('PRAGMA foreign_keys = ON')

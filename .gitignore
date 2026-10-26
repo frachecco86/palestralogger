@@ -10,3 +10,4 @@ public/sql-wasm.wasm
 .netlify
 .vite
 *.log
+.smoke

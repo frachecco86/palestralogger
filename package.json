@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1",
     "icons": "node scripts/gen-icons.mjs",
-    "deploy": "npm run build && npx netlify deploy --prod --dir=dist"
+    "deploy": "npm run build && npx netlify deploy --prod --dir=dist",
+    "smoke": "vite build --ssr scripts/smoke-db.ts --outDir .smoke --emptyOutDir && node .smoke/smoke-db.js"
   },
   "dependencies": {
     "react": "^19.3.1",
