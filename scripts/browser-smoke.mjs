@@ -30,6 +30,7 @@ Object.defineProperty(window.navigator, 'serviceWorker', {
 window.document.body.innerHTML = '<div id="root"></div>'
 
 const LIVE = process.env.LIVE === '1'
+const json = (data) => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } })
 const ORIGIN = 'https://palestralogger.netlify.app'
 const realFetch = globalThis.fetch
 
@@ -56,6 +57,44 @@ globalThis.fetch = async (input, init) => {
       status: 200,
       headers: { 'content-type': 'application/wasm' },
     })
+  }
+  if (url.includes('api/social')) {
+    if (LIVE) return realFetch(input, init)
+    const body = JSON.parse(init?.body || '{}')
+    const now = new Date().toISOString()
+    const friendSnap = {
+      version: 1, generatedAt: now,
+      stats: {
+        totalWorkouts: 12, totalVolume: 24000, totalSets: 90, totalReps: 900, activeDays: 20,
+        weekWorkouts: 3, weekVolume: 6000, monthWorkouts: 8, monthVolume: 15000,
+        currentStreak: 2, bestStreak: 5, firstDate: '2026-09-01', lastDate: '2026-10-25',
+        muscles: [{ muscle: 'Petto', volume: 9000, sets: 40 }],
+        topExercises: [{ name: 'Panca piana', muscle: 'Petto', volume: 9000, sets: 40, bestWeight: 90, bestE1rm: 110, lastDate: '2026-10-25' }],
+        weekly: [],
+      },
+      workouts: [{
+        id: 'fw1', date: '2026-10-25', name: 'Push', muscles: ['Petto'], volume: 3000, sets: 9,
+        exercises: [{ name: 'Panca piana', muscle: 'Petto', equipment: 'Bilanciere', sets: [{ reps: 10, weight: 80 }] }],
+        note: 'Ottima sessione',
+      }],
+    }
+    const luca = { uid: 'friend-1', name: 'Luca', snapshot: friendSnap, updatedAt: now }
+    const sara = { uid: 'friend-2', name: 'Sara', snapshot: null, updatedAt: now }
+    let state = {
+      exists: true,
+      me: { uid: 'uid-self', name: 'Marco', friendCode: 'QQQQ-WWWW-EEEE', snapshot: null, updatedAt: now },
+      friends: [luca],
+      incoming: [{ uid: 'friend-2', name: 'Sara', at: now }],
+      outgoing: [],
+    }
+    if (body.action === 'activate') state = { ...state, incoming: state.incoming }
+    else if (body.action === 'request') return json({ status: 'requested', target: { uid: 'friend-3', name: 'Anna' } })
+    else if (body.action === 'respond' && body.accept) {
+      state = { ...state, incoming: [], friends: [luca, sara] }
+      return json(state)
+    } else if (body.action === 'publish') return json({ ok: true, updatedAt: now })
+    else if (body.action === 'delete') return json({ ok: true })
+    return json(state)
   }
   if (url.includes('api/sync')) return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
   return realFetch(input, init)
@@ -139,6 +178,36 @@ await wait(800)
 console.log('7. stats:', body().slice(0, 180))
 if (!body().includes('I tuoi progressi')) throw new Error('statistiche non aperte')
 
+// footer
+if (!body().includes('CHECCO digital creaction 2026')) throw new Error('footer mancante')
+console.log('8. footer ok')
+
+// amici (API mockata; in LIVE richiederebbe account reali)
+const uid = window.localStorage.getItem('palestralogger:session')
+if (!LIVE) {
+window.localStorage.setItem('palestralogger:sync:' + uid, 'AAAA-BBBB-CCCC-DDDD')
+await clickText('Oggi')
+await wait(400)
+window.document.querySelector('[aria-label="Amici"]')?.click()
+await wait(700)
+await wait(900)
+console.log('9. amici:', body().slice(0, 220))
+if (!body().includes('QQQQ-WWWW-EEEE')) throw new Error('codice amico non mostrato')
+if (!body().includes('Luca')) throw new Error('amico non mostrato')
+if (!body().includes('Sara')) throw new Error('richiesta non mostrata')
+
+await clickText('Accetta')
+await wait(700)
+if (body().includes('vuole diventare tuo amico')) throw new Error('richiesta non accettata')
+
+await clickText('Luca')
+await wait(800)
+console.log('10. amico:', body().slice(0, 200))
+if (!body().includes('Panca piana')) throw new Error('allenamento amico non mostrato')
+if (!body().includes('Ottima sessione')) throw new Error('nota amico non mostrata')
+if (!body().includes('CHECCO digital creaction 2026')) throw new Error('footer mancante nel dettaglio amico')
+
+}
 // regressione: riavvio con sessione salvata (niente schermo nero)
 window.location.hash = '#/home'
 window.document.body.innerHTML = '<div id="root"></div>'

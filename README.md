@@ -82,7 +82,7 @@ Come funziona:
 ## Amici — come si diventa amici
 
 1. Profilo → **Sync cloud** deve essere attiva (l'identità dell'account è la sync).
-2. Profilo → **Amici → Attiva amici**: viene generato un **codice amico** tipo `K7FQ-2M9P-XR4` (12 caratteri).
+2. Profilo → **Amici → Attiva amici**: viene generato un **codice amico** tipo `K7FQ-2M9P-XR4T` (12 caratteri).
 3. Condividi il codice (tasto Condividi/Copia) con la persona che vuoi aggiungere.
 4. L'altra persona apre **Amici → Aggiungi un amico**, inserisce il codice e invia la richiesta.
 5. Tu la vedi in **Richieste** e scegli **Accetta** o **Rifiuta**.
