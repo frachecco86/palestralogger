@@ -13,6 +13,7 @@ I dati vivono in un database **SQLite** (compilato in WebAssembly) salvato nel d
 - **Calendario**: vista mensile con intensità del volume per giorno, selezione giorno, elenco allenamenti e aggiunta rapida.
 - **Statistiche**: allenamenti, volume, serie, ripetizioni, giorni attivi, streak attuale e record, volume per gruppo muscolare, top esercizi, record stimati 1RM (Epley), grafico ultime 8 settimane.
 - **Dettaglio esercizio**: storico carico massimo per sessione, sessioni, volume, record.
+- **Storia delle versioni**: il numero di versione nel footer apre una modale con le novità spiegate in italiano semplice.
 - **Amici**: codice amico separato dal codice sync, richiesta + accettazione, allenamenti e statistiche visibili solo agli amici reciproci. Note condivisibili con un toggle.
 - **Sync multi-dispositivo (opzionale)**: codice segreto di 16 caratteri, sincronizzazione automatica di profilo, esercizi e allenamenti tramite Netlify Functions + Netlify Blobs. Nessun account, nessuna email.
 - **Backup/ripristino**: esporta e importa l'intero database `.sqlite`.

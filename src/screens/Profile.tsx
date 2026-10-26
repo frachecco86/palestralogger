@@ -7,6 +7,7 @@ import { formatKg, initials } from '../lib/format'
 import { toast, useLiveData } from '../lib/live'
 import { disableSync } from '../lib/sync'
 import { SyncCard } from '../components/SyncCard'
+import { APP_VERSION } from '../lib/version'
 import {
   Button,
   Card,
@@ -18,8 +19,6 @@ import {
   inputClass,
   type IconName,
 } from '../components/ui'
-
-const APP_VERSION = '1.2.0'
 
 function Row({
   icon,

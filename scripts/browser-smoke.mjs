@@ -128,7 +128,8 @@ async function clickText(text, { exact = false } = {}) {
 }
 
 await import(bundlePath)
-await wait(1200)
+for (let i = 0; i < 25 && !body().includes('Crea profilo'); i++) await wait(300)
+await wait(400)
 
 console.log('1. avvio:', body().slice(0, 60))
 
@@ -181,6 +182,18 @@ if (!body().includes('I tuoi progressi')) throw new Error('statistiche non apert
 // footer
 if (!body().includes('CHECCO digital creaction 2026')) throw new Error('footer mancante')
 console.log('8. footer ok')
+
+// modale storia versioni
+await clickText('versione 1.3.0')
+await wait(500)
+if (!body().includes('Novità di PalestraLogger')) throw new Error('modale versioni non aperta')
+if (!body().includes('La storia delle novità')) throw new Error('versione attuale assente')
+if (!body().includes('Si comincia')) throw new Error('storia versioni incompleta')
+if (!body().includes('v1.0.0')) throw new Error('badge versione assente')
+console.log('8b. modale versioni ok')
+window.document.querySelector('[aria-label="Chiudi"]')?.click()
+await wait(400)
+if (body().includes('Novità di PalestraLogger')) throw new Error('modale versioni non chiusa')
 
 // amici (API mockata; in LIVE richiederebbe account reali)
 const uid = window.localStorage.getItem('palestralogger:session')
