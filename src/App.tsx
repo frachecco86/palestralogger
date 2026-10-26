@@ -106,9 +106,10 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
+  // Solo dopo initDb(): prima il DB non esiste e getUser lancerebbe.
   const user: User | null = useMemo(
-    () => (sessionId ? getUser(sessionId) : null),
-    [sessionId, version],
+    () => (ready && sessionId ? getUser(sessionId) : null),
+    [ready, sessionId, version],
   )
 
   useEffect(() => {

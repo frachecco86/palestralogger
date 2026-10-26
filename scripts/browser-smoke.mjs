@@ -1,6 +1,7 @@
 import { Window } from 'happy-dom'
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const window = new Window({ url: 'https://palestralogger.netlify.app/' })
 globalThis.window = window
@@ -137,6 +138,15 @@ await clickText('Statistiche')
 await wait(800)
 console.log('7. stats:', body().slice(0, 180))
 if (!body().includes('I tuoi progressi')) throw new Error('statistiche non aperte')
+
+// regressione: riavvio con sessione salvata (niente schermo nero)
+window.location.hash = '#/home'
+window.document.body.innerHTML = '<div id="root"></div>'
+await import(pathToFileURL(bundlePath).href + '?reload=1')
+await wait(1800)
+console.log('8. riavvio con sessione:', body().slice(0, 140))
+if (body().includes('Qualcosa è andato storto')) throw new Error('crash al riavvio')
+if (!body().includes('Ciao, Marco')) throw new Error('sessione non ripristinata al riavvio')
 
 console.log('--- ERRORS ---')
 console.log(errors.length ? errors.join('\n') : '(none)')

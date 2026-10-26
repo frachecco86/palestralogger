@@ -19,7 +19,7 @@ import {
   type IconName,
 } from '../components/ui'
 
-const APP_VERSION = '1.1.1'
+const APP_VERSION = '1.1.2'
 
 function Row({
   icon,
