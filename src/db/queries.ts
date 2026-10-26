@@ -19,6 +19,7 @@ interface RawUser {
   pin_salt: string
   pin_length: number
   created_at: string
+  updated_at: string
 }
 
 const mapUser = (r: RawUser): User => ({
@@ -28,6 +29,7 @@ const mapUser = (r: RawUser): User => ({
   pinSalt: r.pin_salt,
   pinLength: r.pin_length ?? 4,
   createdAt: r.created_at,
+  updatedAt: r.updated_at || r.created_at,
 })
 
 export function listUsers(): User[] {
@@ -54,10 +56,11 @@ export async function createUser(name: string, pin: string): Promise<User> {
     pinSalt: salt,
     pinLength: pin.length,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   }
   mutate(
-    'INSERT INTO users (id, name, pin_hash, pin_salt, pin_length, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    [user.id, user.name, user.pinHash, user.pinSalt, user.pinLength, user.createdAt],
+    'INSERT INTO users (id, name, pin_hash, pin_salt, pin_length, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [user.id, user.name, user.pinHash, user.pinSalt, user.pinLength, user.createdAt, user.updatedAt],
   )
   return user
 }
@@ -69,12 +72,10 @@ export function checkPin(user: User, pin: string): Promise<boolean> {
 export async function updateUserPin(userId: string, pin: string): Promise<void> {
   if (!/^\d{4,6}$/.test(pin)) throw new Error('Il PIN deve avere 4-6 cifre')
   const { hash, salt } = await hashPin(pin)
-  mutate('UPDATE users SET pin_hash = ?, pin_salt = ?, pin_length = ? WHERE id = ?', [
-    hash,
-    salt,
-    pin.length,
-    userId,
-  ])
+  mutate(
+    'UPDATE users SET pin_hash = ?, pin_salt = ?, pin_length = ?, updated_at = ? WHERE id = ?',
+    [hash, salt, pin.length, new Date().toISOString(), userId],
+  )
 }
 
 export function renameUser(userId: string, name: string): void {
@@ -85,7 +86,11 @@ export function renameUser(userId: string, name: string): void {
     [clean, userId],
   )
   if (exists) throw new Error('Esiste già un profilo con questo nome')
-  mutate('UPDATE users SET name = ? WHERE id = ?', [clean, userId])
+  mutate('UPDATE users SET name = ?, updated_at = ? WHERE id = ?', [
+    clean,
+    new Date().toISOString(),
+    userId,
+  ])
 }
 
 export function deleteUser(userId: string): void {

@@ -9,6 +9,7 @@ export interface SyncProfile {
   pinSalt: string
   pinLength: number
   createdAt: string
+  updatedAt: string
 }
 
 export interface SyncExercise {
@@ -62,6 +63,7 @@ interface RawProfile {
   pin_salt: string
   pin_length: number
   created_at: string
+  updated_at: string
 }
 
 interface RawExercise {
@@ -158,6 +160,7 @@ export function buildSyncPayload(userId: string): SyncPayload {
       pinSalt: profile.pin_salt,
       pinLength: profile.pin_length,
       createdAt: profile.created_at,
+      updatedAt: profile.updated_at || profile.created_at,
     },
     exercises,
     workouts: workouts.map((w) => ({
@@ -201,7 +204,26 @@ export function applySyncPayload(userId: string, remote: SyncPayload | null): Sy
       ]),
     )
 
+    const localProfile = queryOne<RawProfile>('SELECT * FROM users WHERE id = ?', [userId])
+    const remoteProfileTime = remote.profile?.updatedAt || remote.profile?.createdAt || ''
+    const localProfileTime = localProfile?.updated_at || localProfile?.created_at || ''
+
     tx((db) => {
+      // 0. profilo (nome e PIN) se il remoto è più recente
+      if (remote.profile && remoteProfileTime > localProfileTime) {
+        db.run(
+          'UPDATE users SET name = ?, pin_hash = ?, pin_salt = ?, pin_length = ?, updated_at = ? WHERE id = ?',
+          [
+            remote.profile.name,
+            remote.profile.pinHash,
+            remote.profile.pinSalt,
+            remote.profile.pinLength || 4,
+            remoteProfileTime,
+            userId,
+          ],
+        )
+      }
+
       const insertTombstone = db.prepare(
         `INSERT INTO deleted_records (kind, record_id, user_id, deleted_at) VALUES (?, ?, ?, ?)
          ON CONFLICT(kind, record_id) DO UPDATE SET deleted_at = excluded.deleted_at
@@ -294,13 +316,17 @@ export function importSyncProfile(profile: SyncProfile): string {
   const existing = queryOne<RawProfile>('SELECT * FROM users WHERE id = ?', [profile.id])
   if (existing) {
     tx((db) => {
-      db.run('UPDATE users SET name = ?, pin_hash = ?, pin_salt = ?, pin_length = ? WHERE id = ?', [
-        profile.name,
-        profile.pinHash,
-        profile.pinSalt,
-        profile.pinLength || 4,
-        profile.id,
-      ])
+      db.run(
+        'UPDATE users SET name = ?, pin_hash = ?, pin_salt = ?, pin_length = ?, updated_at = ? WHERE id = ?',
+        [
+          profile.name,
+          profile.pinHash,
+          profile.pinSalt,
+          profile.pinLength || 4,
+          profile.updatedAt || new Date().toISOString(),
+          profile.id,
+        ],
+      )
     })
     return profile.id
   }
@@ -312,8 +338,16 @@ export function importSyncProfile(profile: SyncProfile): string {
   const id = profile.id
   tx((db) => {
     db.run(
-      'INSERT INTO users (id, name, pin_hash, pin_salt, pin_length, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, name, profile.pinHash, profile.pinSalt, profile.pinLength || 4, profile.createdAt],
+      'INSERT INTO users (id, name, pin_hash, pin_salt, pin_length, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        id,
+        name,
+        profile.pinHash,
+        profile.pinSalt,
+        profile.pinLength || 4,
+        profile.createdAt,
+        profile.updatedAt || new Date().toISOString(),
+      ],
     )
   })
   return id

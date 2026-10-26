@@ -254,6 +254,28 @@ async function smokeSync() {
   const stillNew = getWorkout(user.id, localId)
   if (stillNew?.name !== 'Aggiornato dal telefono') throw new Error('il remoto vecchio ha sovrascritto il locale')
 
+  // profilo remoto più recente (nome + PIN)
+  applySyncPayload(user.id, {
+    ...payload,
+    profile: {
+      ...payload.profile,
+      name: 'Marco Cloud',
+      pinHash: 'hash-remoto',
+      pinSalt: 'salt-remoto',
+      pinLength: 5,
+      updatedAt: '2030-01-01T00:00:00.000Z',
+    },
+    exercises: [],
+    workouts: [],
+    tombstones: [],
+    savedAt: '2030-01-01T00:00:00.000Z',
+  })
+  const syncedUser = listUsers().find((u) => u.id === user.id)
+  console.log('profilo sync:', syncedUser?.name, syncedUser?.pinLength)
+  if (syncedUser?.name !== 'Marco Cloud' || syncedUser?.pinLength !== 5) {
+    throw new Error('profilo remoto non applicato')
+  }
+
   console.log('sync merge: OK')
 }
 

@@ -40,6 +40,7 @@ export interface User {
   pinSalt: string
   pinLength: number
   createdAt: string
+  updatedAt: string
 }
 
 export interface Exercise {

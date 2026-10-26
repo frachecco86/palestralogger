@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS users (
   pin_hash TEXT NOT NULL,
   pin_salt TEXT NOT NULL,
   pin_length INTEGER NOT NULL DEFAULT 4,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS exercises (

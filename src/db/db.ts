@@ -134,6 +134,13 @@ function migrate(database: Database) {
       database.exec("ALTER TABLE exercises ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
     }
     database.exec("UPDATE exercises SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''")
+
+    const userInfo = database.exec('PRAGMA table_info(users)')
+    const userColumns = userInfo[0]?.values.map((row) => String(row[1])) ?? []
+    if (userColumns.length > 0 && !userColumns.includes('updated_at')) {
+      database.exec("ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
+    }
+    database.exec("UPDATE users SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''")
     database.exec(`
       CREATE TABLE IF NOT EXISTS deleted_records (
         kind TEXT NOT NULL,

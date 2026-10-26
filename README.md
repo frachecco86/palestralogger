@@ -70,7 +70,8 @@ workout_sets(id, workout_id, exercise_id, entry_index, set_index, reps, weight, 
 Come funziona:
 
 - La copia locale SQLite resta la fonte primaria; la function conserva solo l'ultimo snapshot JSON per codice.
-- Il merge è **last-write-wins per entità** (allenamenti ed esercizi), con tombstone per le cancellazioni, quindi modifiche fatte su dispositivi diversi confluiscono senza duplicati.
+- Il merge è **last-write-wins per entità** (profilo, allenamenti ed esercizi), con tombstone per le cancellazioni, quindi modifiche fatte su dispositivi diversi confluiscono senza duplicati.
+- Anche nome e PIN del profilo vengono allineati all'ultima modifica (timestamp `updated_at`): cambiando il PIN su un telefono, sull'altro vale il PIN nuovo.
 - Revisione ottimistica: se due dispositivi scrivono insieme, il client rilegge, rifà il merge e ripubblica.
 - Il codice non viene mai salvato sul server in chiaro: la chiave del blob è lo SHA-256 del codice.
 - I dati sono cifrati in transito (HTTPS) ma **non end-to-end**: Netlify Blobs li conserva leggibili lato server. Chi conosce il codice può leggerli e modificarli, quindi va trattato come una password.
