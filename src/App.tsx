@@ -121,7 +121,7 @@ export default function App() {
   // sync automatica: all'avvio, al ritorno in foreground e dopo le modifiche
   const userId = user?.id
   useEffect(() => {
-    if (!userId || !getSyncCode(userId)) return
+    if (!userId) return
     let timer: ReturnType<typeof setTimeout> | undefined
     const run = () => {
       if (!getSyncCode(userId) || isSyncing()) return
