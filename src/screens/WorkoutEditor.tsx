@@ -13,6 +13,7 @@ import { formatKg, plural } from '../lib/format'
 import { toast } from '../lib/live'
 import { Button, Card, Chip, Icon, Sheet, cx } from '../components/ui'
 import { ExercisePicker } from '../components/ExercisePicker'
+import { ShareWorkoutSheet } from '../components/ShareWorkoutSheet'
 
 interface EditorSet {
   key: string
@@ -90,6 +91,7 @@ function NumInput({
 
 export function WorkoutEditor({
   userId,
+  userName,
   workoutId,
   initialDate,
   initialExerciseId,
@@ -98,6 +100,7 @@ export function WorkoutEditor({
   onDeleted,
 }: {
   userId: string
+  userName: string
   workoutId?: string
   initialDate?: string
   initialExerciseId?: string
@@ -123,6 +126,7 @@ export function WorkoutEditor({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const totalSets = entries.reduce((s, e) => s + e.sets.length, 0)
   const totalVolume = entries.reduce(
@@ -239,6 +243,15 @@ export function WorkoutEditor({
     else onClose()
   }
 
+  function openShare() {
+    if (!loaded) return
+    if (dirty) {
+      toast('Salva le modifiche prima di condividere', 'err')
+      return
+    }
+    setShareOpen(true)
+  }
+
   if (workoutId && !loaded) {
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center gap-3 px-6 text-center">
@@ -272,6 +285,16 @@ export function WorkoutEditor({
             </p>
             <p className="truncate text-[14px] font-semibold leading-tight">{title}</p>
           </div>
+          {loaded && (
+            <button
+              type="button"
+              onClick={openShare}
+              aria-label="Condividi l'allenamento come immagine"
+              className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface2 border border-line text-lime"
+            >
+              <Icon name="share" size={17} />
+            </button>
+          )}
           <span className="rounded-lg bg-surface2 border border-line px-2 py-1 text-[11px] text-muted tabular">
             {totalSets} serie
           </span>
@@ -454,11 +477,21 @@ export function WorkoutEditor({
           <Icon name="plus" size={18} /> Aggiungi esercizio
         </button>
 
+        {loaded && (
+          <button
+            type="button"
+            onClick={openShare}
+            className="press mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-line2 bg-surface text-[12.5px] font-semibold text-text hover:border-lime/40"
+          >
+            <Icon name="share" size={15} className="text-lime" /> Condividi come immagine
+          </button>
+        )}
+
         {workoutId && (
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-[12px] font-medium text-danger/80 hover:text-danger"
+            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-[12px] font-medium text-danger/80 hover:text-danger"
           >
             <Icon name="trash" size={14} /> Elimina allenamento
           </button>
@@ -489,6 +522,15 @@ export function WorkoutEditor({
         userId={userId}
         excludeIds={entries.map((e) => e.exercise.id)}
       />
+
+      {loaded && (
+        <ShareWorkoutSheet
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          workout={loaded}
+          userName={userName}
+        />
+      )}
 
       <Sheet open={confirmClose} onClose={() => setConfirmClose(false)} title="Modifiche non salvate">
         <div className="pb-5">

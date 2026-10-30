@@ -13,6 +13,7 @@ I dati vivono in un database **SQLite** (compilato in WebAssembly) salvato nel d
 - **Calendario**: vista mensile con intensità del volume per giorno, selezione giorno, elenco allenamenti e aggiunta rapida.
 - **Statistiche**: allenamenti, volume, serie, ripetizioni, giorni attivi, streak attuale e record, volume per gruppo muscolare, top esercizi, record stimati 1RM (Epley), grafico ultime 8 settimane.
 - **Dettaglio esercizio**: storico carico massimo per sessione, sessioni, volume, record.
+- **Condivisione come immagine**: dall'allenamento crea una card verticale 1080×1920 (9:16) pronta per storie e chat, in tre stili con anteprima — **Completo** (tutti gli esercizi, serie e note), **Essenziale** (solo titolo e numeri) e **Sticker** (grafica social con top set e gruppi muscolari). Condivisione nativa con `navigator.share`, oppure salvataggio PNG.
 - **Storia delle versioni**: il numero di versione nel footer apre una modale con le novità spiegate in italiano semplice.
 - **Amici**: codice amico separato dal codice sync, richiesta + accettazione, allenamenti e statistiche visibili solo agli amici reciproci. Note condivisibili con un toggle.
 - **Sync multi-dispositivo (opzionale)**: codice segreto di 16 caratteri, sincronizzazione automatica di profilo, esercizi e allenamenti tramite Netlify Functions + Netlify Blobs. Nessun account, nessuna email.
@@ -49,8 +50,8 @@ La function di sync è in `netlify/functions/sync.ts`; in locale richiede `npx n
 ```
 src/
   db/          SQLite: bootstrap, schema, seed esercizi, query tipizzate
-  lib/         date, formattazione, hash PIN, sessione, hook live data
-  components/  UI kit, bottom nav, picker esercizi, toaster
+  lib/         date, formattazione, hash PIN, sessione, hook live data, share-card (immagine allenamento)
+  components/  UI kit, bottom nav, picker esercizi, toaster, foglio condivisione
   screens/     Auth, Home, WorkoutEditor, Calendario, Statistiche, Esercizi, Profilo
 scripts/       copia wasm + generazione icone
 ```
@@ -95,6 +96,19 @@ Privacy:
 - Lo snapshot condiviso contiene solo ciò che il client pubblica (ultimi 20 allenamenti); le note sono escluse di default e si attivano con il toggle.
 - Rimuovendo un amico o disattivando gli amici, l'accesso ai dati futuri termina; gli amici non ricevono più aggiornamenti.
 - Lo snapshot viene ripubblicato automaticamente pochi secondi dopo le modifiche e all'apertura dell'app.
+
+## Condivisione come immagine
+
+Dall'allenamento salvato: **Condividi come immagine** (icona in alto o pulsante in fondo alla schermata).
+L'immagine è generata sul dispositivo con la Canvas API, in formato verticale **1080 × 1920** (9:16), e non viene mai caricata su un server.
+
+| Stile | Contenuto |
+| --- | --- |
+| **Completo** | Titolo, data, volume, statistiche, barra dei gruppi muscolari, elenco esercizi con serie e carico, note della sessione |
+| **Essenziale** | Poster centrato: data, titolo, volume e tre numeri. Nessun elenco |
+| **Sticker** | Stile social: sticker della data, volume su etichetta lime, pillole statistiche, chip dei muscoli, «top set» e nota |
+
+Il foglio di condivisione mostra le tre anteprime: si sceglie lo stile e si condivide con il menu nativo del telefono (`navigator.share` con file PNG) oppure si salva il file. Se la condivisione di file non è supportata dal browser, l'immagine viene scaricata.
 
 ## Privacy e limiti
 

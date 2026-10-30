@@ -173,6 +173,21 @@ console.log('6. dopo salvataggio:', body().slice(0, 500))
 if (!body().includes('Nota di prova')) throw new Error('note non mostrate in home')
 if (!body().includes('800 kg')) throw new Error('volume non mostrato in home')
 
+// condivisione come immagine: in happy-dom manca il canvas, ma il foglio si deve aprire
+await clickText('Petto')
+await wait(700)
+await clickText('Condividi come immagine')
+await wait(500)
+console.log('6b. condivisione:', body().slice(0, 160))
+if (!body().includes("Condividi l'allenamento")) throw new Error('foglio condivisione non aperto')
+if (!body().includes('Completo') || !body().includes('Essenziale') || !body().includes('Sticker'))
+  throw new Error('stili di condivisione mancanti')
+window.document.querySelector('[aria-label="Chiudi"]')?.click()
+await wait(400)
+window.document.querySelector('[aria-label="Torna indietro"]')?.click()
+await wait(600)
+if (!body().includes('Ciao, Marco')) throw new Error('ritorno alla home dopo la condivisione fallito')
+
 // statistiche
 await clickText('Statistiche')
 await wait(800)
@@ -184,7 +199,7 @@ if (!body().includes('CHECCO digital creaction 2026')) throw new Error('footer m
 console.log('8. footer ok')
 
 // modale storia versioni
-await clickText('versione 1.3.0')
+await clickText('versione 1.4.0')
 await wait(500)
 if (!body().includes('Novità di PalestraLogger')) throw new Error('modale versioni non aperta')
 if (!body().includes('La storia delle novità')) throw new Error('versione attuale assente')

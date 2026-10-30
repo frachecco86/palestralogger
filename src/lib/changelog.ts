@@ -10,6 +10,15 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.0',
+    title: 'Condividi l’allenamento',
+    items: [
+      'Nuovo pulsante «Condividi come immagine» dentro l’allenamento: crea una card verticale pronta per storie, chat e social.',
+      'Tre stili tra cui scegliere con anteprima: completo, essenziale e sticker.',
+      'Puoi condividere con il menu del telefono oppure salvare l’immagine nella galleria.',
+    ],
+  },
+  {
     version: '1.3.0',
     title: 'La storia delle novità',
     items: [
