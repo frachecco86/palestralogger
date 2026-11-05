@@ -22,8 +22,8 @@ del browser o cambiare telefono non li cancella più.
   lat machine, trazioni, military press, curl, hip thrust, plank, cardio…), ricerca con
   autocompletamento per nome e attrezzatura, filtro per gruppo muscolare.
 - **Foto esercizio**: una foto per esercizio (macchina, attrezzo, posizione), compressa sul telefono,
-  visibile in miniatura accanto al nome e salvata anche nel cloud. In modifica c'è anche «applica a
-  tutte» per copiare i kg di una serie su tutte le altre.
+  visibile in miniatura accanto al nome (anche nel selettore esercizi) e salvata anche nel cloud. In
+  modifica c'è anche «applica a tutte» per copiare i kg di una serie su tutte le altre.
 - **Esercizi personalizzati**: creazione al volo dalla ricerca («Crea "xyz"») con gruppo muscolare e
   attrezzatura; eliminabili se non usati.
 - **Auto-comportamento**: quando aggiungi un esercizio già fatto, vengono proposte le serie

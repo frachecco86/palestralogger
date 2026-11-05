@@ -35,21 +35,13 @@ export function ExerciseThumb({
   photo?: ExercisePhoto
   editable: boolean
   name: string
-  onClick: () => void
+  /** Se assente la miniatura è solo decorativa (es. dentro una riga cliccabile). */
+  onClick?: () => void
 }) {
   if (!photo && !editable) return null
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={photo ? `Foto di ${name}` : `Aggiungi foto a ${name}`}
-      className={cx(
-        'press relative h-9 w-9 shrink-0 overflow-hidden rounded-lg border',
-        photo
-          ? 'border-line2 bg-surface2'
-          : 'border-dashed border-line2 bg-surface2/60 text-faint',
-      )}
-    >
+
+  const content = (
+    <>
       {photo ? (
         <ThumbImage photo={photo} />
       ) : (
@@ -62,6 +54,31 @@ export function ExerciseThumb({
           <Icon name="camera" size={9} />
         </span>
       )}
+    </>
+  )
+
+  const className = cx(
+    'relative h-9 w-9 shrink-0 overflow-hidden rounded-lg border',
+    photo ? 'border-line2 bg-surface2' : 'border-dashed border-line2 bg-surface2/60 text-faint',
+    onClick && 'press',
+  )
+
+  if (!onClick) {
+    return (
+      <span aria-hidden="true" className={className}>
+        {content}
+      </span>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={photo ? `Foto di ${name}` : `Aggiungi foto a ${name}`}
+      className={className}
+    >
+      {content}
     </button>
   )
 }

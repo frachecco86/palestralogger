@@ -1,10 +1,19 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Exercise, Muscle } from '../lib/types'
 import { MUSCLES, MUSCLE_COLORS } from '../lib/types'
-import { createExercise, getExerciseAggregates, listExercises } from '../db/queries'
+import {
+  createExercise,
+  getExerciseAggregates,
+  getExercisePhoto,
+  listExercisePhotoMeta,
+  listExercises,
+  type ExercisePhoto,
+} from '../db/queries'
+import { syncPhotos } from '../lib/photo'
 import { Badge, Button, Chip, Icon, Sheet, cx, inputClass } from './ui'
 import { formatDate } from '../lib/dates'
 import { useLiveData, toast } from '../lib/live'
+import { ExerciseThumb } from './ExercisePhoto'
 
 export function ExercisePicker({
   open,
@@ -28,6 +37,39 @@ export function ExercisePicker({
   const [err, setErr] = useState<string | null>(null)
 
   const exercises = useLiveData(() => listExercises(userId), [userId])
+
+  // miniature delle foto: si mostrano nella lista per riconoscere l'esercizio
+  const [photos, setPhotos] = useState<Record<string, ExercisePhoto>>({})
+  const exerciseKey = useMemo(() => exercises.map((e) => e.id).join('|'), [exercises])
+
+  function loadPhotos() {
+    const map: Record<string, ExercisePhoto> = {}
+    for (const meta of listExercisePhotoMeta(userId)) {
+      const photo = getExercisePhoto(userId, meta.exerciseId)
+      if (photo) map[meta.exerciseId] = photo
+    }
+    setPhotos(map)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    loadPhotos()
+    const ids = exerciseKey ? exerciseKey.split('|') : []
+    if (ids.length === 0) return
+    let alive = true
+    // scarica dal cloud le foto mancanti per gli esercizi in lista
+    void syncPhotos(userId, ids)
+      .then((changed) => {
+        if (alive && changed.length > 0) loadPhotos()
+      })
+      .catch(() => {
+        /* offline: si mostrano le foto già presenti */
+      })
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, userId, exerciseKey])
   const aggregates = useLiveData(() => getExerciseAggregates(userId, 500), [userId])
   const aggMap = useMemo(
     () => new Map(aggregates.map((a) => [a.exerciseId, a])),
@@ -239,6 +281,7 @@ export function ExercisePicker({
                         className="h-8 w-1 shrink-0 rounded-full"
                         style={{ background: MUSCLE_COLORS[e.muscle] }}
                       />
+                      <ExerciseThumb photo={photos[e.id]} editable={false} name={e.name} />
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5">
                           <span className="truncate text-[13.5px] font-medium">{e.name}</span>

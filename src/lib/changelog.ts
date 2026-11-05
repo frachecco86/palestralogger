@@ -10,6 +10,15 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.1.1',
+    title: 'Le foto anche nella ricerca',
+    items: [
+      'Quando aggiungi un esercizio all’allenamento, nella lista compare la miniatura della foto accanto al nome: così riconosci subito la macchina giusta.',
+      'Le miniature mancanti si scaricano dal cloud all’apertura della lista; senza foto resta solo la barra colorata del gruppo muscolare.',
+      'Le immagini sono salvate nel tuo account (cloud) e in copia sul telefono: restano visibili anche offline.',
+    ],
+  },
+  {
     version: '2.1.0',
     title: 'Foto degli esercizi e peso al volo',
     items: [
