@@ -171,11 +171,11 @@ type Stores = ReturnType<typeof stores>
 async function accountByEmail(store: Stores, email: string): Promise<Account | null> {
   const id = await store.accounts.get(EMAIL_PREFIX + sha256(email))
   if (!id) return null
-  return (await store.accounts.getJSON(ACCOUNT_PREFIX + id)) as Account | null
+  return (await store.accounts.get(ACCOUNT_PREFIX + id, { type: 'json' })) as Account | null
 }
 
 async function accountById(store: Stores, id: string): Promise<Account | null> {
-  return (await store.accounts.getJSON(ACCOUNT_PREFIX + id)) as Account | null
+  return (await store.accounts.get(ACCOUNT_PREFIX + id, { type: 'json' })) as Account | null
 }
 
 async function saveAccount(store: Stores, account: Account): Promise<void> {
@@ -183,7 +183,7 @@ async function saveAccount(store: Stores, account: Account): Promise<void> {
 }
 
 async function getData(store: Stores, accountId: string): Promise<DataDoc | null> {
-  return (await store.data.getJSON(DATA_PREFIX + accountId)) as DataDoc | null
+  return (await store.data.get(DATA_PREFIX + accountId, { type: 'json' })) as DataDoc | null
 }
 
 async function issueSession(store: Stores, account: Account): Promise<string> {
@@ -230,7 +230,7 @@ async function revokeSessions(store: Stores, accountId: string): Promise<void> {
 async function authenticate(store: Stores, tokenRaw: unknown): Promise<Account> {
   const token = String(tokenRaw ?? '').trim()
   if (token.length < 20 || token.length > 100) throw new HttpError(401, 'auth')
-  const session = (await store.accounts.getJSON(TOKEN_PREFIX + sha256(token))) as Session | null
+  const session = (await store.accounts.get(TOKEN_PREFIX + sha256(token), { type: 'json' })) as Session | null
   if (!session) throw new HttpError(401, 'auth')
   const account = await accountById(store, session.accountId)
   if (!account) throw new HttpError(401, 'auth')
@@ -240,7 +240,7 @@ async function authenticate(store: Stores, tokenRaw: unknown): Promise<Account> 
 
 async function rateLimitCheck(store: Stores, email: string): Promise<void> {
   const key = RATE_PREFIX + sha256(email)
-  const doc = (await store.accounts.getJSON(key)) as { fails: number; until: number } | null
+  const doc = (await store.accounts.get(key, { type: 'json' })) as { fails: number; until: number } | null
   if (doc && doc.until > Date.now() && doc.fails >= LOGIN_MAX_FAILS) {
     throw new HttpError(429, 'too_many_attempts')
   }
@@ -248,7 +248,7 @@ async function rateLimitCheck(store: Stores, email: string): Promise<void> {
 
 async function rateLimitFail(store: Stores, email: string): Promise<void> {
   const key = RATE_PREFIX + sha256(email)
-  const doc = (await store.accounts.getJSON(key)) as { fails: number; until: number } | null
+  const doc = (await store.accounts.get(key, { type: 'json' })) as { fails: number; until: number } | null
   const now = Date.now()
   const active = doc && doc.until > now
   await store.accounts.setJSON(key, {
@@ -316,7 +316,7 @@ async function deleteAccountData(store: Stores, account: Account): Promise<void>
   await store.accounts.delete(ACCOUNT_PREFIX + account.id)
 
   // funzione amici: rimuove il documento e libera il codice amico
-  const socialDoc = (await store.social.getJSON('u/' + account.uid)) as
+  const socialDoc = (await store.social.get('u/' + account.uid, { type: 'json' })) as
     | { friendCode?: string; friends?: string[] }
     | null
   if (socialDoc) {
@@ -385,7 +385,7 @@ export const handler = async (event: Event) => {
       const token = String(body.token ?? '').trim()
       if (token.length >= 20) {
         const hash = sha256(token)
-        const session = (await store.accounts.getJSON(TOKEN_PREFIX + hash)) as Session | null
+        const session = (await store.accounts.get(TOKEN_PREFIX + hash, { type: 'json' })) as Session | null
         await store.accounts.delete(TOKEN_PREFIX + hash)
         if (session) {
           const keys = await sessionKeys(store, session.accountId)
@@ -528,14 +528,14 @@ export const handler = async (event: Event) => {
         .toUpperCase()
         .replace(/[^A-Z0-9-]/g, '')
       if (!LEGACY_CODE_RE.test(code)) throw new HttpError(400, 'invalid_code')
-      const legacy = (await store.data.getJSON(LEGACY_PREFIX + sha256(code))) as DataDoc | null
+      const legacy = (await store.data.get(LEGACY_PREFIX + sha256(code), { type: 'json' })) as DataDoc | null
       if (!legacy || !legacy.payload) throw new HttpError(404, 'no_data')
 
       // Il profilo importato porta con sé l'identità social (amici già attivi).
       const legacyProfileId = (legacy.payload as { profile?: { id?: unknown } }).profile?.id
       if (typeof legacyProfileId === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(legacyProfileId)) {
-        const currentSocial = await store.social.getJSON('u/' + account.uid)
-        const legacySocial = await store.social.getJSON('u/' + legacyProfileId)
+        const currentSocial = await store.social.get('u/' + account.uid, { type: 'json' })
+        const legacySocial = await store.social.get('u/' + legacyProfileId, { type: 'json' })
         if (!currentSocial && legacySocial) {
           account.uid = legacyProfileId
           await saveAccount(store, account)

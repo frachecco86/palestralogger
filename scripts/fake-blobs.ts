@@ -41,10 +41,6 @@ export function getStore({ name }: { name: string }) {
       if (options?.type === 'json') return JSON.parse(raw)
       return raw
     },
-    async getJSON(key: string) {
-      const raw = map.get(key)
-      return raw === undefined ? null : JSON.parse(raw)
-    },
     async set(key: string, data: unknown, options?: { onlyIfNew?: boolean }) {
       if (options?.onlyIfNew && map.has(key)) return { modified: false }
       map.set(key, String(data))

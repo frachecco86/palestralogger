@@ -109,11 +109,11 @@ async function authenticate(
   if (token.length < 20 || token.length > 100) throw new HttpError(401, 'auth')
   const accounts = accountsStore(event)
   const hash = createHash('sha256').update(token).digest('hex')
-  const session = (await accounts.getJSON('tok/' + hash)) as
+  const session = (await accounts.get('tok/' + hash, { type: 'json' })) as
     | { accountId?: string; pwStamp?: string }
     | null
   if (!session?.accountId) throw new HttpError(401, 'auth')
-  const account = (await accounts.getJSON('acct/' + session.accountId)) as AccountRecord | null
+  const account = (await accounts.get('acct/' + session.accountId, { type: 'json' })) as AccountRecord | null
   if (!account || account.passwordChangedAt !== session.pwStamp) throw new HttpError(401, 'auth')
   return { uid: account.uid || account.id, name: account.name || 'Atleta' }
 }
