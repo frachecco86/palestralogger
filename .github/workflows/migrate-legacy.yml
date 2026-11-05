@@ -1,0 +1,23 @@
+name: Migrate legacy snapshot (one-off)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Write snapshot
+        run: node scripts/migrate-legacy-blob.mjs
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          PL_MIGRATE_CODE: ${{ secrets.PL_MIGRATE_CODE }}
+          PL_MIGRATE_PAYLOAD: ${{ secrets.PL_MIGRATE_PAYLOAD }}
