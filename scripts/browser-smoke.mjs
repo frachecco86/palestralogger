@@ -207,6 +207,30 @@ if (!body().includes('800 kg')) throw new Error('volume non mostrato in home')
 // condivisione come immagine: in happy-dom manca il canvas, ma il foglio si deve aprire
 await clickText('Petto')
 await wait(700)
+
+// schede esercizio compresse dopo il salvataggio + cancellazione solo in modalità modifica
+if (window.document.querySelector('input[aria-label="ripetizioni serie 1"]'))
+  throw new Error('esercizio salvato non compresso')
+const aria = (el) => el.getAttribute('aria-label') || ''
+const buttons = () => [...window.document.querySelectorAll('button')]
+if (buttons().some((b) => aria(b).startsWith('Rimuovi ')))
+  throw new Error('cestino visibile senza modalità modifica')
+const expand = buttons().find((b) => aria(b).startsWith('Espandi '))
+if (!expand) throw new Error('icona espandi mancante')
+expand.click()
+await wait(400)
+if (!window.document.querySelector('input[aria-label="ripetizioni serie 1"]'))
+  throw new Error('espansione non mostra le serie')
+await clickText('Modifica', { exact: true })
+await wait(300)
+if (!buttons().some((b) => aria(b).startsWith('Rimuovi Panca')))
+  throw new Error('cestino non compare in modalità modifica')
+await clickText('Fine', { exact: true })
+await wait(300)
+if (buttons().some((b) => aria(b).startsWith('Rimuovi Panca')))
+  throw new Error('cestino ancora visibile dopo aver chiuso la modifica')
+console.log('6a. schede compresse + modifica protetta ok')
+
 await clickText('Condividi come immagine')
 await wait(500)
 console.log('6b. condivisione:', body().slice(0, 160))
@@ -230,7 +254,8 @@ if (!body().includes('CHECCO digital creaction 2026')) throw new Error('footer m
 console.log('8. footer ok')
 
 // modale storia versioni
-await clickText('versione 2.0.0')
+const appVersion = JSON.parse(readFileSync('package.json', 'utf8')).version
+await clickText('versione ' + appVersion)
 await wait(500)
 if (!body().includes('Novità di PalestraLogger')) throw new Error('modale versioni non aperta')
 if (!body().includes('La storia delle novità')) throw new Error('versione attuale assente')

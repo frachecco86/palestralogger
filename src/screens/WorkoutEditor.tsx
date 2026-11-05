@@ -120,6 +120,10 @@ export function WorkoutEditor({
       sets: e.sets.map((s) => ({ key: key(), reps: s.reps, weight: s.weight })),
     })),
   )
+  // Gli esercizi di un allenamento già salvato partono chiusi: si espandono col tasto.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(entries.map((e) => e.key)))
+  // Rimuovere esercizi o serie è possibile solo attivando la modalità modifica.
+  const [editMode, setEditMode] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const initialAdded = useRef(false)
   const [confirmClose, setConfirmClose] = useState(false)
@@ -210,6 +214,25 @@ export function WorkoutEditor({
     setEntries((prev) => prev.map((e) => (e.key === entryKey ? fn(e) : e)))
   }
 
+  function removeEntry(entryKey: string) {
+    setEntries((prev) => prev.filter((e) => e.key !== entryKey))
+    setCollapsed((prev) => {
+      if (!prev.has(entryKey)) return prev
+      const next = new Set(prev)
+      next.delete(entryKey)
+      return next
+    })
+  }
+
+  function toggleCollapsed(entryKey: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(entryKey)) next.delete(entryKey)
+      else next.add(entryKey)
+      return next
+    })
+  }
+
   function handleSave() {
     setError(null)
     const payload: WorkoutEntryInput[] = entries.map((e) => ({
@@ -281,7 +304,7 @@ export function WorkoutEditor({
           </button>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] uppercase tracking-[0.12em] text-muted">
-              {workoutId ? 'Modifica' : 'Nuovo'}
+              {workoutId ? 'Allenamento' : 'Nuovo'}
             </p>
             <p className="truncate text-[14px] font-semibold leading-tight">{title}</p>
           </div>
@@ -354,31 +377,106 @@ export function WorkoutEditor({
         </Card>
 
         {/* esercizi */}
-        <div className="mt-4 space-y-2.5">
-          {entries.map((entry, idx) => (
+        <div className="mt-4 flex items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+            Esercizi
+            {entries.length > 0 && <span className="font-normal text-faint"> · {entries.length}</span>}
+          </p>
+          {entries.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setEditMode((v) => !v)}
+              aria-pressed={editMode}
+              aria-label={editMode ? 'Disattiva modifica esercizi' : 'Attiva modifica esercizi'}
+              className={cx(
+                'press flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11.5px] font-semibold',
+                editMode
+                  ? 'border-lime/40 bg-lime/15 text-lime'
+                  : 'border-line bg-surface2 text-muted',
+              )}
+            >
+              <Icon name={editMode ? 'check' : 'edit'} size={13} />
+              {editMode ? 'Fine' : 'Modifica'}
+            </button>
+          )}
+        </div>
+        {editMode && (
+          <p className="mt-2 rounded-lg border border-danger/25 bg-danger/[0.07] px-2.5 py-1.5 text-[10.5px] leading-relaxed text-danger">
+            Modalità modifica attiva: il cestino rimuove l’esercizio, la × toglie una serie.
+          </p>
+        )}
+
+        <div className="mt-2.5 space-y-2.5">
+          {entries.map((entry) => (
             <Card key={entry.key} className="overflow-hidden">
-              <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
+              <div
+                className={cx(
+                  'flex items-center gap-2 px-3',
+                  collapsed.has(entry.key) ? 'py-2.5' : 'pt-2.5 pb-1.5',
+                )}
+              >
                 <span
                   className="h-7 w-1 shrink-0 rounded-full"
                   style={{ background: MUSCLE_COLORS[entry.exercise.muscle] }}
                 />
-                <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={() => toggleCollapsed(entry.key)}
+                  aria-label={`Dettagli ${entry.exercise.name}`}
+                  aria-expanded={!collapsed.has(entry.key)}
+                  className="min-w-0 flex-1 text-left"
+                >
                   <p className="truncate text-[13.5px] font-semibold">{entry.exercise.name}</p>
                   <p className="text-[10.5px] text-faint">
                     {entry.exercise.muscle}
                     {entry.exercise.equipment ? ` · ${entry.exercise.equipment}` : ''}
                   </p>
-                </div>
+                </button>
+
+                {collapsed.has(entry.key) && (
+                  <div className="shrink-0 text-right">
+                    <p className="text-[11.5px] font-semibold leading-tight tabular">
+                      {plural(entry.sets.length, 'serie', 'serie')}
+                    </p>
+                    <p className="text-[10px] text-faint tabular">
+                      {formatKg(entry.sets.reduce((x, s) => x + s.reps * s.weight, 0))}
+                    </p>
+                  </div>
+                )}
+
+                {editMode && (
+                  <button
+                    type="button"
+                    onClick={() => removeEntry(entry.key)}
+                    className="press flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-danger/25 bg-danger/10 text-danger"
+                    aria-label={`Rimuovi ${entry.exercise.name}`}
+                  >
+                    <Icon name="trash" size={15} />
+                  </button>
+                )}
+
                 <button
                   type="button"
-                  onClick={() => setEntries((prev) => prev.filter((e) => e.key !== entry.key))}
-                  className="press flex h-8 w-8 items-center justify-center rounded-lg text-faint hover:text-danger hover:bg-danger/10"
-                  aria-label={`Rimuovi ${entry.exercise.name}`}
+                  onClick={() => toggleCollapsed(entry.key)}
+                  className="press flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:text-text"
+                  aria-label={
+                    collapsed.has(entry.key)
+                      ? `Espandi ${entry.exercise.name}`
+                      : `Comprimi ${entry.exercise.name}`
+                  }
                 >
-                  <Icon name="trash" size={16} />
+                  <Icon
+                    name="down"
+                    size={16}
+                    className={cx(
+                      'transition-transform',
+                      collapsed.has(entry.key) ? '' : 'rotate-180',
+                    )}
+                  />
                 </button>
               </div>
 
+              {!collapsed.has(entry.key) && (
               <div className="px-3 pb-2.5">
                 {entry.lastHint && (
                   <p className="mb-1.5 rounded-lg bg-surface2/60 px-2 py-1 text-[10.5px] text-muted">
@@ -430,20 +528,22 @@ export function WorkoutEditor({
                           }))
                         }
                       />
-                      <button
-                        type="button"
-                        disabled={entry.sets.length === 1}
-                        onClick={() =>
-                          updateEntry(entry.key, (e) => ({
-                            ...e,
-                            sets: e.sets.filter((s) => s.key !== set.key),
-                          }))
-                        }
-                        className="press flex h-8 w-7 items-center justify-center rounded-lg text-faint hover:text-danger disabled:opacity-20"
-                        aria-label={`Rimuovi serie ${setIdx + 1}`}
-                      >
-                        <Icon name="close" size={13} />
-                      </button>
+                      {editMode && (
+                        <button
+                          type="button"
+                          disabled={entry.sets.length === 1}
+                          onClick={() =>
+                            updateEntry(entry.key, (e) => ({
+                              ...e,
+                              sets: e.sets.filter((s) => s.key !== set.key),
+                            }))
+                          }
+                          className="press flex h-8 w-7 items-center justify-center rounded-lg text-faint hover:text-danger disabled:opacity-20"
+                          aria-label={`Rimuovi serie ${setIdx + 1}`}
+                        >
+                          <Icon name="close" size={13} />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -464,7 +564,7 @@ export function WorkoutEditor({
                   <Icon name="plus" size={13} /> Aggiungi serie
                 </button>
               </div>
-              {idx === entries.length - 1 && <div className="h-0.5 bg-transparent" />}
+              )}
             </Card>
           ))}
         </div>

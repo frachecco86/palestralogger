@@ -10,6 +10,15 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.0.1',
+    title: 'Niente più tocchi per sbaglio',
+    items: [
+      'Nell’allenamento gli esercizi salvati ora sono compatti: si aprono con la freccia e occupano meno spazio.',
+      'Per cancellare un esercizio o una serie devi prima toccare «Modifica»: il cestino non è più a portata di dito.',
+      'Quando la modifica è attiva un avviso te lo ricorda; tocca «Fine» per tornare alla lettura.',
+    ],
+  },
+  {
     version: '2.0.0',
     title: 'I tuoi allenamenti non si perdono più',
     items: [

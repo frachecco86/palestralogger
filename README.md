@@ -16,7 +16,8 @@ del browser o cambiare telefono non li cancella più.
 - **Offline-first**: in palestra l'app funziona senza rete; le modifiche si allineano appena torna
   il segnale (in background, senza bloccare l'interfaccia).
 - **Nuovo allenamento**: data, titolo opzionale, note ed esercizi con serie (ripetizioni × peso,
-  incrementi da 2,5 kg).
+  incrementi da 2,5 kg). Gli esercizi di un allenamento salvato restano compressi (si aprono con la
+  freccia) e la cancellazione di esercizi/serie richiede la modalità «Modifica».
 - **Libreria esercizi**: ~60 esercizi principali pre-caricati (panca piana, leg press, squat, stacco,
   lat machine, trazioni, military press, curl, hip thrust, plank, cardio…), ricerca con
   autocompletamento per nome e attrezzatura, filtro per gruppo muscolare.
