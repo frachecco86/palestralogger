@@ -1,0 +1,29 @@
+name: Recover cloud data (one-off)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Recover
+        run: node scripts/recover-cloud.mjs
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          PL_RECOVERY_KEY: ${{ secrets.PL_RECOVERY_KEY }}
+          PL_RECOVERY_FRIEND_CODE: ${{ secrets.PL_RECOVERY_FRIEND_CODE }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recovered
+          path: |
+            recovered.enc
+            recovery-meta.json
