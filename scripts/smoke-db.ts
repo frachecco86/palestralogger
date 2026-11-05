@@ -1,7 +1,11 @@
 import { initDb, flush } from '../src/db/db'
 import { applySyncPayload, buildSyncPayload } from '../src/db/sync-queries'
 import {
+  adoptLocalData,
   createUser,
+  getUser,
+  ensureLocalUser,
+  resetLocalData,
   listUsers,
   checkPin,
   listExercises,
@@ -156,6 +160,8 @@ async function smokeSync() {
   const base = getWorkout(user.id, localId)
   if (!base) throw new Error('workout locale mancante')
 
+  // timestamp futuro: il remoto deve vincere indipendentemente dalla data del test
+  const FUTURE = new Date(Date.now() + 86_400_000).toISOString()
   const remoteNewId = 'remote-workout-1'
   const remoteExerciseId = 'remote-ex-1'
   const remote = {
@@ -176,7 +182,7 @@ async function smokeSync() {
         ...base,
         name: 'Aggiornato dal telefono',
         notes: 'nota remota',
-        updatedAt: '2026-10-27T10:00:00.000Z',
+        updatedAt: FUTURE,
         sets: base.entries.flatMap((entry, entryIndex) =>
           entry.sets.map((s, setIndex) => ({
             id: `remote-set-${entryIndex}-${setIndex}`,
@@ -212,7 +218,7 @@ async function smokeSync() {
     date: '2026-10-02',
     entries: [{ exerciseId: 'def-panca-piana', sets: [{ reps: 5, weight: 60 }] }],
   })
-  remote.tombstones.push({ kind: 'workout' as const, id: doomedId, deletedAt: '2026-10-28T00:00:00.000Z' })
+  remote.tombstones.push({ kind: 'workout' as const, id: doomedId, deletedAt: FUTURE })
 
   const merged = applySyncPayload(user.id, remote)
   const updated = getWorkout(user.id, localId)
@@ -254,33 +260,61 @@ async function smokeSync() {
   const stillNew = getWorkout(user.id, localId)
   if (stillNew?.name !== 'Aggiornato dal telefono') throw new Error('il remoto vecchio ha sovrascritto il locale')
 
-  // profilo remoto più recente (nome + PIN)
+  // profilo remoto più recente (nome)
   applySyncPayload(user.id, {
     ...payload,
     profile: {
       ...payload.profile,
       name: 'Marco Cloud',
-      pinHash: 'hash-remoto',
-      pinSalt: 'salt-remoto',
-      pinLength: 5,
-      updatedAt: '2030-01-01T00:00:00.000Z',
+      updatedAt: FUTURE,
     },
     exercises: [],
     workouts: [],
     tombstones: [],
-    savedAt: '2030-01-01T00:00:00.000Z',
+    savedAt: FUTURE,
   })
   const syncedUser = listUsers().find((u) => u.id === user.id)
-  console.log('profilo sync:', syncedUser?.name, syncedUser?.pinLength)
-  if (syncedUser?.name !== 'Marco Cloud' || syncedUser?.pinLength !== 5) {
+  console.log('profilo sync:', syncedUser?.name)
+  if (syncedUser?.name !== 'Marco Cloud') {
     throw new Error('profilo remoto non applicato')
   }
 
   console.log('sync merge: OK')
 }
 
+// ---- account: adozione dei dati locali (profilo 1.x -> account cloud) ----
+async function smokeAccount() {
+  resetLocalData()
+  const legacy = await createUser('Profilo Vecchio', '1234')
+  saveWorkout(legacy.id, {
+    date: '2026-10-01',
+    name: 'Legacy A',
+    entries: [{ exerciseId: 'def-panca-piana', sets: [{ reps: 8, weight: 80 }] }],
+  })
+  saveWorkout(legacy.id, {
+    date: '2026-10-02',
+    name: 'Legacy B',
+    entries: [{ exerciseId: 'def-squat-bilanciere', sets: [{ reps: 5, weight: 120 }] }],
+  })
+
+  const adopted = adoptLocalData('account-1', 'Account Cloud')
+  const user = getUser('account-1')
+  console.log('adozione locale:', adopted, '| profilo:', user?.name, '| workout:', listWorkouts('account-1').length)
+  if (!adopted) throw new Error('dati locali non adottati')
+  if (user?.name !== 'Account Cloud') throw new Error('nome account non applicato')
+  if (listWorkouts('account-1').length !== 2) throw new Error('allenamenti non migrati')
+  if (getUser(legacy.id)) throw new Error('vecchio profilo non rimosso')
+
+  // un secondo account sullo stesso telefono non deve vedere i dati del primo
+  resetLocalData()
+  ensureLocalUser({ id: 'account-2', name: 'Altro' })
+  if (listWorkouts('account-2').length !== 0) throw new Error('dati non azzerati')
+  console.log('account switch: OK')
+}
+
 main()
   .then(() => smokeSync())
+  .then(() => smokeAccount())
   .then(() => process.exit(0))
   .catch((e) => {
     console.error('SMOKE FAIL', e)

@@ -1,9 +1,11 @@
-import { applySyncPayload, buildSyncPayload, importSyncProfile, type SyncPayload } from '../db/sync-queries'
+import { applySyncPayload, buildSyncPayload, type SyncPayload } from '../db/sync-queries'
+import { getCachedAccount, pushRemote, pullRemote } from './account'
 
-const API_URL = '/api/sync'
-const CODE_PREFIX = 'palestralogger:sync:'
-const LAST_PREFIX = 'palestralogger:sync-last:'
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+/**
+ * Sync con il database online: pull → merge last-write-wins → push con
+ * revisione ottimistica. La copia locale SQLite è solo una cache: se il
+ * telefono la perde, al prossimo accesso i dati tornano dal cloud.
+ */
 
 export interface SyncMeta {
   at: string
@@ -11,10 +13,7 @@ export interface SyncMeta {
   error?: string
 }
 
-export interface PullResult {
-  revision: number
-  payload: SyncPayload | null
-}
+const LAST_PREFIX = 'palestralogger:sync-last:'
 
 let syncing = false
 let lastAttemptAt = 0
@@ -40,14 +39,6 @@ function writeStorage(key: string, value: string | null): void {
   }
 }
 
-export function getSyncCode(userId: string): string | null {
-  return readStorage(CODE_PREFIX + userId)
-}
-
-export function setSyncCode(userId: string, code: string | null): void {
-  writeStorage(CODE_PREFIX + userId, code)
-}
-
 export function getLastSync(userId: string): SyncMeta | null {
   const raw = readStorage(LAST_PREFIX + userId)
   if (!raw) return null
@@ -67,113 +58,37 @@ function setLastSync(userId: string, meta: SyncMeta) {
   }
 }
 
-export function generateSyncCode(): string {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  let out = ''
-  for (let i = 0; i < 16; i++) out += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length]
-  return out.replace(/(.{4})(?=.)/g, '$1-')
-}
-
-export function normalizeSyncCode(raw: string): string {
-  const clean = raw
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-    .slice(0, 16)
-  return clean.replace(/(.{4})(?=.)/g, '$1-')
-}
-
-export function isValidSyncCode(raw: string): boolean {
-  return /^[A-Z0-9]{4}(-[A-Z0-9]{4}){3}$/.test(normalizeSyncCode(raw))
-}
-
-async function callApi<T>(body: Record<string, unknown>): Promise<{ status: number; data: T }> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 15_000)
-  try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    })
-    const text = await res.text()
-    let data: T
-    try {
-      data = JSON.parse(text) as T
-    } catch {
-      throw new Error('Servizio di sincronizzazione non disponibile')
-    }
-    return { status: res.status, data }
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error('Sincronizzazione scaduta, riprova')
-    }
-    throw err
-  } finally {
-    clearTimeout(timer)
+/** Confronto senza il timestamp di generazione: evita push inutili. */
+function samePayload(a: unknown, b: unknown): boolean {
+  if (!a || !b) return false
+  const strip = (value: unknown) => {
+    const { savedAt: _savedAt, ...rest } = value as Record<string, unknown>
+    return JSON.stringify(rest)
   }
+  return strip(a) === strip(b)
 }
 
-function errorFrom(data: unknown): string {
-  const err = (data as { error?: string } | null)?.error
-  switch (err) {
-    case 'invalid_code':
-      return 'Codice di sincronizzazione non valido'
-    case 'payload_too_large':
-      return 'Troppi dati da sincronizzare'
-    case 'method_not_allowed':
-      return 'Servizio di sincronizzazione non disponibile'
-    case 'server_error':
-      return 'Errore del server di sincronizzazione'
-    default:
-      return 'Sincronizzazione non riuscita'
-  }
-}
-
-export async function pullRemote(code: string): Promise<PullResult> {
-  const { status, data } = await callApi<PullResult & { error?: string }>({
-    action: 'pull',
-    code: normalizeSyncCode(code),
-  })
-  if (status !== 200) throw new Error(errorFrom(data))
-  return { revision: data.revision ?? 0, payload: data.payload ?? null }
-}
-
-type PushResponse =
-  | { revision: number; error?: undefined }
-  | { revision: number; payload: SyncPayload | null; conflict: true }
-
-export async function pushRemote(
-  code: string,
-  payload: SyncPayload,
-  baseRevision: number,
-): Promise<PushResponse> {
-  const { status, data } = await callApi<PushResponse & { error?: string }>({
-    action: 'push',
-    code: normalizeSyncCode(code),
-    payload,
-    baseRevision,
-  })
-  if (status === 409) return { ...(data as object), conflict: true } as PushResponse
-  if (status !== 200) throw new Error(errorFrom(data))
-  return data
-}
-
-/** Pull + merge + push con risoluzione ottimistica dei conflitti. */
+/**
+ * Allinea il dispositivo con il cloud. Se il cloud è vuoto (primo accesso)
+ * carica i dati locali; se il locale è vuoto scarica tutto dal cloud.
+ */
 export async function syncNow(userId: string): Promise<SyncMeta | null> {
-  const code = getSyncCode(userId)
-  if (!code) return null
+  if (!getCachedAccount()) return null
   if (syncing) return null
   if (Date.now() - lastAttemptAt < 1200) return null
 
   syncing = true
   lastAttemptAt = Date.now()
   try {
-    let remote = await pullRemote(code)
-    for (let attempt = 0; attempt < 3; attempt++) {
+    let remote = await pullRemote()
+    for (let attempt = 0; attempt < 4; attempt++) {
       const merged = applySyncPayload(userId, remote.payload)
-      const pushed = await pushRemote(code, merged, remote.revision)
+      if (samePayload(merged, remote.payload)) {
+        const meta: SyncMeta = { at: new Date().toISOString(), ok: true }
+        setLastSync(userId, meta)
+        return meta
+      }
+      const pushed = await pushRemote(merged, remote.revision)
       if (!('conflict' in pushed) || !pushed.conflict) {
         const meta: SyncMeta = { at: new Date().toISOString(), ok: true }
         setLastSync(userId, meta)
@@ -195,47 +110,17 @@ export async function syncNow(userId: string): Promise<SyncMeta | null> {
   }
 }
 
-/** Attiva la sync per il profilo e restituisce il codice da usare sugli altri dispositivi. */
-export async function activateSync(userId: string): Promise<string> {
-  const existing = getSyncCode(userId)
-  if (existing) return existing
-
-  const code = generateSyncCode()
-  const payload = buildSyncPayload(userId)
-  const pushed = await pushRemote(code, payload, 0)
-  if ('conflict' in pushed && pushed.conflict) {
-    throw new Error('Codice già in uso, riprova')
+/** Forza un push immediato dei soli dati locali (usato dopo l'import di un backup). */
+export async function pushLocal(userId: string): Promise<void> {
+  const remote = await pullRemote()
+  let revision = remote.revision
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const payload: SyncPayload = buildSyncPayload(userId)
+    const pushed = await pushRemote(payload, revision)
+    if (!('conflict' in pushed) || !pushed.conflict) return
+    revision = pushed.revision
   }
-  setSyncCode(userId, code)
-  setLastSync(userId, { at: new Date().toISOString(), ok: true })
-  return code
-}
-
-/** Su un nuovo dispositivo: scarica profilo e dati dal codice e collega la sync. */
-export async function linkDevice(rawCode: string): Promise<string> {
-  const code = normalizeSyncCode(rawCode)
-  if (!isValidSyncCode(code)) throw new Error('Inserisci un codice di 16 caratteri')
-  const remote = await pullRemote(code)
-  if (!remote.payload || !remote.payload.profile) {
-    throw new Error('Nessun dato trovato per questo codice')
-  }
-  const userId = importSyncProfile(remote.payload.profile)
-  applySyncPayload(userId, remote.payload)
-  setSyncCode(userId, code)
-  await syncNow(userId)
-  return userId
-}
-
-export async function disableSync(
-  userId: string,
-  options: { deleteRemote: boolean },
-): Promise<void> {
-  const code = getSyncCode(userId)
-  setSyncCode(userId, null)
-  writeStorage(LAST_PREFIX + userId, null)
-  if (options.deleteRemote && code) {
-    await callApi({ action: 'delete', code: normalizeSyncCode(code) })
-  }
+  throw new Error('Conflitto di sincronizzazione, riprova')
 }
 
 export function formatSyncTime(iso: string): string {

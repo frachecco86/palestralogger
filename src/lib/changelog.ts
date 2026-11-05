@@ -10,6 +10,18 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.0.0',
+    title: 'I tuoi allenamenti non si perdono più',
+    items: [
+      'Ora c’è un account: entri con email e password e ritrovi tutti i tuoi allenamenti su qualsiasi telefono.',
+      'I dati non vivono più solo nella memoria del browser: svuotare i dati del telefono o cambiare dispositivo non li cancella.',
+      'Il codice di recupero, da conservare, permette di reimpostare la password se la dimentichi.',
+      'L’app continua a funzionare in palestra anche senza rete: appena torna il segnale si allinea da sola.',
+      'Chi usava la versione 1.x ritrova i suoi dati: vengono caricati nel nuovo account al primo accesso (o con il vecchio codice sync).',
+      'Il servizio è ospitato su Netlify, non ha abbonamenti e non scade.',
+    ],
+  },
+  {
     version: '1.4.0',
     title: 'Condividi l’allenamento',
     items: [

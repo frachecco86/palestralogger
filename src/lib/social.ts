@@ -1,5 +1,5 @@
 import { getWorkout, getStats, listWorkouts } from '../db/queries'
-import { getSyncCode } from './sync'
+import { getToken } from './account'
 import { epley } from './format'
 import type { Muscle } from './types'
 
@@ -266,7 +266,7 @@ export class SocialError extends Error {
 function messageFor(code: string | undefined): string {
   switch (code) {
     case 'auth':
-      return 'Attiva prima la sync cloud dal Profilo'
+      return 'Sessione scaduta, accedi di nuovo'
     case 'not_found':
       return 'Nessun profilo con questo codice amico'
     case 'self':
@@ -287,14 +287,14 @@ function messageFor(code: string | undefined): string {
   }
 }
 
-function requireSyncCode(uid: string): string {
-  const code = getSyncCode(uid)
-  if (!code) throw new Error('Attiva prima la sync cloud dal Profilo')
-  return code
+function requireToken(): string {
+  const token = getToken()
+  if (!token) throw new Error('Accedi al tuo account per usare gli amici')
+  return token
 }
 
 export async function socialMe(uid: string): Promise<SocialMeResult> {
-  const result = await call<SocialMeResult>({ action: 'me', code: requireSyncCode(uid) })
+  const result = await call<SocialMeResult>({ action: 'me', token: requireToken() })
   if (result.exists) {
     cacheState(uid, result)
     write(enabledKey(uid), '1')
@@ -303,7 +303,7 @@ export async function socialMe(uid: string): Promise<SocialMeResult> {
 }
 
 export async function activateSocial(uid: string): Promise<SocialState> {
-  const state = await call<SocialState>({ action: 'activate', code: requireSyncCode(uid) })
+  const state = await call<SocialState>({ action: 'activate', token: requireToken() })
   cacheState(uid, state)
   write(enabledKey(uid), '1')
   return state
@@ -314,7 +314,7 @@ export async function publishSocial(uid: string): Promise<SharedSnapshot | null>
   const snapshot = buildSharedSnapshot(uid)
   const res = await call<{ ok: boolean; updatedAt: string }>({
     action: 'publish',
-    code: requireSyncCode(uid),
+    token: requireToken(),
     snapshot,
   })
   const cached = getCachedSocial(uid)
@@ -327,12 +327,12 @@ export async function publishSocial(uid: string): Promise<SharedSnapshot | null>
 }
 
 export async function sendFriendRequest(
-  uid: string,
+  _uid: string,
   friendCode: string,
 ): Promise<{ status: 'requested' | 'already_friends'; target: { uid: string; name: string } }> {
   return call({
     action: 'request',
-    code: requireSyncCode(uid),
+    token: requireToken(),
     friendCode: normalizeFriendCode(friendCode),
   })
 }
@@ -344,7 +344,7 @@ export async function respondFriendRequest(
 ): Promise<SocialState> {
   const state = await call<SocialState>({
     action: 'respond',
-    code: requireSyncCode(uid),
+    token: requireToken(),
     fromUid,
     accept,
   })
@@ -355,7 +355,7 @@ export async function respondFriendRequest(
 export async function removeFriend(uid: string, friendUid: string): Promise<SocialState> {
   const state = await call<SocialState>({
     action: 'remove',
-    code: requireSyncCode(uid),
+    token: requireToken(),
     friendUid,
   })
   cacheState(uid, state)
@@ -364,7 +364,7 @@ export async function removeFriend(uid: string, friendUid: string): Promise<Soci
 
 export async function deleteSocial(uid: string): Promise<void> {
   try {
-    await call({ action: 'delete', code: requireSyncCode(uid) })
+    await call({ action: 'delete', token: requireToken() })
   } finally {
     clearCache(uid)
   }

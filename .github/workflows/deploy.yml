@@ -28,6 +28,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Smoke dati (SQLite + merge)
+        run: npm run smoke
+
+      - name: Smoke backend (account + sync + amici)
+        run: npm run smoke:account
+
       - name: Build
         run: npm run build
 

@@ -30,7 +30,7 @@ Object.defineProperty(window.navigator, 'serviceWorker', {
 window.document.body.innerHTML = '<div id="root"></div>'
 
 const LIVE = process.env.LIVE === '1'
-const json = (data) => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } })
+const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } })
 const ORIGIN = 'https://palestralogger.netlify.app'
 const realFetch = globalThis.fetch
 
@@ -57,6 +57,25 @@ globalThis.fetch = async (input, init) => {
       status: 200,
       headers: { 'content-type': 'application/wasm' },
     })
+  }
+  if (url.includes('api/account')) {
+    const body = JSON.parse(init?.body || '{}')
+    const account = {
+      id: 'acct-1',
+      uid: 'acct-1',
+      email: body.email || 'marco@example.com',
+      name: body.name || 'Marco',
+      createdAt: '2026-10-26T10:00:00.000Z',
+    }
+    if (body.action === 'register' || body.action === 'login') {
+      return json({ token: 'token-di-prova-0123456789abcdef', account, recoveryCode: 'AAAA-BBBB-CCCC-DDDD', revision: 0 })
+    }
+    if (body.action === 'session') return json({ account, revision: 0 })
+    if (body.action === 'pull') return json({ revision: 0, payload: null })
+    if (body.action === 'push') return json({ revision: 1, updatedAt: now })
+    if (body.action === 'claimSyncCode') return json({ error: 'no_data' }, 404)
+    if (body.action === 'delete') return json({ ok: true })
+    return json({ ok: true })
   }
   if (url.includes('api/social')) {
     if (LIVE) return realFetch(input, init)
@@ -96,7 +115,6 @@ globalThis.fetch = async (input, init) => {
     else if (body.action === 'delete') return json({ ok: true })
     return json(state)
   }
-  if (url.includes('api/sync')) return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
   return realFetch(input, init)
 }
 window.fetch = globalThis.fetch
@@ -128,20 +146,33 @@ async function clickText(text, { exact = false } = {}) {
 }
 
 await import(bundlePath)
-for (let i = 0; i < 25 && !body().includes('Crea profilo'); i++) await wait(300)
+for (let i = 0; i < 25 && !body().includes('Registrati'); i++) await wait(300)
 await wait(400)
 
 console.log('1. avvio:', body().slice(0, 60))
 
+await clickText('Registrati')
+await wait(300)
 const inputs = [...window.document.querySelectorAll('input')]
-setValue(inputs[0], 'Marco')
-setValue(inputs[1], '1234')
-setValue(inputs[2], '1234')
-await clickText('Crea profilo')
-await wait(1600)
+setValue(inputs[0], 'marco@example.com')
+setValue(inputs[1], 'Marco')
+setValue(inputs[2], 'password123')
+setValue(inputs[3], 'password123')
+// il submit è l'ultimo bottone "Crea account" (il primo è la tab)
+const submit = [...window.document.querySelectorAll('button')]
+  .filter((b) => (b.textContent || '').replace(/\s+/g, ' ').trim() === 'Crea account')
+  .pop()
+if (!submit) throw new Error('bottone crea account non trovato')
+submit.click()
+await wait(900)
+
+// sheet con il codice di recupero
+if (!body().includes('AAAA-BBBB-CCCC-DDDD')) throw new Error('codice di recupero non mostrato')
+await clickText('Inizia a usare l’app')
+await wait(1800)
 
 console.log('2. home:', body().slice(0, 120))
-if (!body().includes('Ciao, Marco')) throw new Error('login/creazione profilo fallita')
+if (!body().includes('Ciao, Marco')) throw new Error('login/creazione account fallita')
 
 await clickText('Nuovo allenamento')
 await wait(600)
@@ -199,7 +230,7 @@ if (!body().includes('CHECCO digital creaction 2026')) throw new Error('footer m
 console.log('8. footer ok')
 
 // modale storia versioni
-await clickText('versione 1.4.0')
+await clickText('versione 2.0.0')
 await wait(500)
 if (!body().includes('Novità di PalestraLogger')) throw new Error('modale versioni non aperta')
 if (!body().includes('La storia delle novità')) throw new Error('versione attuale assente')
@@ -211,9 +242,7 @@ await wait(400)
 if (body().includes('Novità di PalestraLogger')) throw new Error('modale versioni non chiusa')
 
 // amici (API mockata; in LIVE richiederebbe account reali)
-const uid = window.localStorage.getItem('palestralogger:session')
 if (!LIVE) {
-window.localStorage.setItem('palestralogger:sync:' + uid, 'AAAA-BBBB-CCCC-DDDD')
 await clickText('Oggi')
 await wait(400)
 window.document.querySelector('[aria-label="Amici"]')?.click()

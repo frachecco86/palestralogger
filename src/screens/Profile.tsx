@@ -1,12 +1,23 @@
 import { useRef, useState } from 'react'
 import type { User } from '../lib/types'
-import { deleteUser, getStats, renameUser, updateUserPin } from '../db/queries'
+import { adoptLocalData, deleteUser, ensureLocalUser, getStats, renameUser } from '../db/queries'
 import { exportDatabaseBytes, importDatabaseBytes } from '../db/db'
+import { applySyncPayload, type SyncPayload } from '../db/sync-queries'
 import { todayISO } from '../lib/dates'
 import { formatKg, initials } from '../lib/format'
 import { toast, useLiveData } from '../lib/live'
-import { disableSync } from '../lib/sync'
-import { SyncCard } from '../components/SyncCard'
+import {
+  AccountError,
+  claimLegacyCode,
+  deleteAccount,
+  getCachedAccount,
+  isValidLegacyCode,
+  logout,
+  normalizeLegacyCode,
+} from '../lib/account'
+import { syncNow } from '../lib/sync'
+import { setLocalOwner } from '../lib/session'
+import { AccountCard } from '../components/AccountCard'
 import { APP_VERSION } from '../lib/version'
 import {
   Button,
@@ -77,13 +88,15 @@ export function ProfileScreen({
   onGoFriends: () => void
 }) {
   const stats = useLiveData(() => getStats(user.id, todayISO()), [user.id])
+  const account = getCachedAccount()
   const [renameOpen, setRenameOpen] = useState(false)
-  const [pinOpen, setPinOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [legacyOpen, setLegacyOpen] = useState(false)
   const [name, setName] = useState(user.name)
-  const [pin, setPin] = useState('')
-  const [pin2, setPin2] = useState('')
+  const [password, setPassword] = useState('')
+  const [legacyCode, setLegacyCode] = useState('')
   const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const standalone =
@@ -113,8 +126,13 @@ export function ProfileScreen({
     try {
       const bytes = new Uint8Array(await file.arrayBuffer())
       await importDatabaseBytes(bytes)
-      toast('Backup ripristinato')
-      setTimeout(() => window.location.reload(), 500)
+      // il backup contiene un profilo 1.x: lo si intesta all'account cloud
+      const adopted = adoptLocalData(user.id, user.name)
+      if (!adopted) ensureLocalUser({ id: user.id, name: user.name, createdAt: user.createdAt })
+      toast('Backup importato: sincronizzo…')
+      void syncNow(user.id)
+        .then(() => window.location.reload())
+        .catch(() => window.location.reload())
     } catch (e) {
       toast(e instanceof Error ? e.message : 'File non valido', 'err')
     }
@@ -126,30 +144,63 @@ export function ProfileScreen({
       setRenameOpen(false)
       onUserChanged()
       toast('Nome aggiornato')
+      void syncNow(user.id).catch(() => {
+        /* verrà ritentato */
+      })
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Errore')
     }
   }
 
-  async function savePin() {
+  async function handleDelete() {
     setErr(null)
-    if (pin !== pin2) {
-      setErr('I due PIN non coincidono')
-      return
-    }
-    if (!/^\d{4,6}$/.test(pin)) {
-      setErr('Il PIN deve avere 4-6 cifre')
-      return
-    }
+    setBusy(true)
     try {
-      await updateUserPin(user.id, pin)
-      setPinOpen(false)
-      setPin('')
-      setPin2('')
-      toast('PIN aggiornato')
+      await deleteAccount(password)
+      deleteUser(user.id)
+      setLocalOwner(null)
+      toast('Account eliminato')
+      onLogout()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Errore')
+      setErr(e instanceof AccountError ? e.message : 'Operazione non riuscita')
+    } finally {
+      setBusy(false)
     }
+  }
+
+  async function handleClaimLegacy() {
+    setErr(null)
+    setBusy(true)
+    try {
+      const res = await claimLegacyCode(legacyCode)
+      if (!res.payload?.profile) throw new Error('Nessun dato trovato per questo codice')
+      const payload = {
+        ...res.payload,
+        profile: { ...res.payload.profile, id: user.id },
+      } as SyncPayload
+      applySyncPayload(user.id, payload)
+      if (payload.profile.name) {
+        try {
+          renameUser(user.id, payload.profile.name)
+        } catch {
+          /* nome già in uso */
+        }
+      }
+      await syncNow(user.id)
+      setLegacyOpen(false)
+      setLegacyCode('')
+      toast(`Recuperati ${payload.workouts.length} allenamenti`)
+      onUserChanged()
+    } catch (e) {
+      setErr(e instanceof AccountError ? e.message : e instanceof Error ? e.message : 'Errore')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleLogout() {
+    await logout()
+    onLogout()
   }
 
   return (
@@ -178,12 +229,11 @@ export function ProfileScreen({
             {initials(user.name)}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[13.5px] font-semibold">Profilo locale</p>
-            <p className="text-[11px] text-muted">
-              Dati al sicuro su questo dispositivo · nessun cloud
-            </p>
+            <p className="text-[13.5px] font-semibold">Profilo con account cloud</p>
+            <p className="truncate text-[11px] text-muted">{account?.email ?? 'Sessione locale'}</p>
+            <p className="text-[10.5px] text-faint">Salvato online e in copia sul telefono</p>
           </div>
-          <Icon name="lock" size={18} className="text-faint" />
+          <Icon name="cloud" size={18} className="text-lime" />
         </div>
 
         <div className="mt-3 grid grid-cols-3 divide-x divide-line rounded-xl border border-line bg-surface2/60">
@@ -205,30 +255,20 @@ export function ProfileScreen({
       </p>
       <Card className="divide-y divide-line overflow-hidden">
         <Row
-          icon="logout"
-          label="Cambia profilo"
-          sub="Torna alla schermata di accesso"
-          onClick={onLogout}
-        />
-        <Row
-          icon="lock"
-          label="Cambia PIN"
-          sub={`PIN a ${user.pinLength} cifre`}
-          onClick={() => {
-            setPin('')
-            setPin2('')
-            setErr(null)
-            setPinOpen(true)
-          }}
-        />
-        <Row
           icon="user"
           label="Modifica nome"
+          sub="Il nome visibile agli amici"
           onClick={() => {
             setErr(null)
             setName(user.name)
             setRenameOpen(true)
           }}
+        />
+        <Row
+          icon="logout"
+          label="Esci dall’account"
+          sub="I dati restano nel cloud e su questo telefono"
+          onClick={() => void handleLogout()}
         />
       </Card>
 
@@ -245,25 +285,35 @@ export function ProfileScreen({
       </Card>
 
       <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-        Sync e dati
+        Cloud e sync
       </p>
-      <SyncCard user={user} />
+      <AccountCard userId={user.id} />
 
       <div className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-        Backup
+        Backup e ripristino
       </div>
       <Card className="divide-y divide-line overflow-hidden">
         <Row
           icon="download"
           label="Scarica backup"
-          sub="Salva tutti i profili in un file .sqlite"
+          sub="Salva tutti i dati in un file .sqlite"
           onClick={handleBackup}
         />
         <Row
           icon="upload"
           label="Ripristina backup"
-          sub="Importa un file .sqlite (sostituisce i dati)"
+          sub="Importa un file .sqlite e caricalo nel cloud"
           onClick={() => fileRef.current?.click()}
+        />
+        <Row
+          icon="cloud"
+          label="Recupera da codice sync 1.x"
+          sub="Se hai ancora il vecchio codice di 16 caratteri"
+          onClick={() => {
+            setErr(null)
+            setLegacyCode('')
+            setLegacyOpen(true)
+          }}
         />
         <Row icon="dumbbell" label="Libreria esercizi" onClick={onGoExercises} />
       </Card>
@@ -291,15 +341,19 @@ export function ProfileScreen({
       <Card className="overflow-hidden">
         <Row
           icon="trash"
-          label="Elimina profilo"
-          sub="Rimuove allenamenti ed esercizi personali"
+          label="Elimina account"
+          sub="Cancella account, cloud e dati da questo telefono"
           danger
-          onClick={() => setDeleteOpen(true)}
+          onClick={() => {
+            setErr(null)
+            setPassword('')
+            setDeleteOpen(true)
+          }}
         />
       </Card>
 
       <p className="mt-5 mb-2 text-center text-[10.5px] text-faint">
-        PalestraLogger {APP_VERSION} · SQLite locale · offline first
+        PalestraLogger {APP_VERSION} · cloud + offline
       </p>
 
       <input
@@ -332,45 +386,49 @@ export function ProfileScreen({
         </div>
       </Sheet>
 
-      <Sheet open={pinOpen} onClose={() => setPinOpen(false)} title="Cambia PIN">
+      <Sheet open={legacyOpen} onClose={() => setLegacyOpen(false)} title="Recupera dal codice sync">
         <div className="space-y-3 pb-5">
-          <Field label="Nuovo PIN">
-            <input
-              className={cx(inputClass, 'tracking-[0.35em] text-center font-semibold')}
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-              placeholder="••••"
-              autoFocus
-            />
-          </Field>
-          <Field label="Ripeti nuovo PIN">
-            <input
-              className={cx(inputClass, 'tracking-[0.35em] text-center font-semibold')}
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              value={pin2}
-              onChange={(e) => setPin2(e.target.value.replace(/\D/g, ''))}
-              placeholder="••••"
-            />
-          </Field>
+          <p className="text-[12.5px] leading-relaxed text-muted">
+            Se nella versione 1.x avevi attivato la sync, inserisci il codice di 16 caratteri:
+            profilo, esercizi e allenamenti verranno uniti a questo account.
+          </p>
+          <input
+            className={cx(inputClass, 'text-center font-mono text-[15px] uppercase tracking-[0.12em]')}
+            placeholder="XXXX-XXXX-XXXX-XXXX"
+            value={legacyCode}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(e) => setLegacyCode(normalizeLegacyCode(e.target.value))}
+          />
           {err && <p className="text-[12px] text-danger">{err}</p>}
-          <Button className="mt-1" full size="lg" onClick={() => void savePin()}>
-            Aggiorna PIN
+          <Button
+            full
+            size="lg"
+            disabled={busy || !isValidLegacyCode(legacyCode)}
+            onClick={() => void handleClaimLegacy()}
+          >
+            {busy ? 'Recupero…' : 'Recupera i dati'}
           </Button>
         </div>
       </Sheet>
 
-      <Sheet open={deleteOpen} onClose={() => setDeleteOpen(false)} title="Elimina profilo">
+      <Sheet open={deleteOpen} onClose={() => setDeleteOpen(false)} title="Elimina account">
         <div className="pb-5">
           <p className="text-[13px] leading-relaxed text-muted">
-            Verranno eliminati definitivamente tutti gli allenamenti, le serie e gli esercizi
-            personalizzati di <strong className="text-text">{user.name}</strong>. Scarica prima un
-            backup se vuoi conservarli.
+            Verranno eliminati definitivamente account, allenamenti, serie ed esercizi
+            personalizzati, sia dal cloud sia da questo telefono. L’operazione non si può annullare:
+            scarica prima un backup se vuoi conservarli.
           </p>
+          <input
+            className={cx(inputClass, 'mt-3')}
+            type="password"
+            autoComplete="current-password"
+            placeholder="Password dell’account"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          {err && <p className="mt-2 text-[12px] text-danger">{err}</p>}
           <Divider className="my-4" />
           <div className="flex gap-2">
             <Button variant="secondary" full onClick={() => setDeleteOpen(false)}>
@@ -379,20 +437,10 @@ export function ProfileScreen({
             <Button
               variant="danger"
               full
-              onClick={() => {
-                void (async () => {
-                  try {
-                    await disableSync(user.id, { deleteRemote: true })
-                  } catch {
-                    /* offline: elimino comunque la copia locale */
-                  }
-                  deleteUser(user.id)
-                  toast('Profilo eliminato')
-                  onLogout()
-                })()
-              }}
+              disabled={busy || password.length < 8}
+              onClick={() => void handleDelete()}
             >
-              Elimina tutto
+              {busy ? 'Elimino…' : 'Elimina tutto'}
             </Button>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { getVersion, initDb, subscribe } from './db/db'
-import { getUser } from './db/queries'
-import { getSessionUserId, setSessionUserId } from './lib/session'
+import { adoptLocalData, ensureLocalUser, getUser, resetLocalData } from './db/queries'
+import { getLocalOwner, setLocalOwner } from './lib/session'
 import type { User } from './lib/types'
 import { AuthScreen } from './screens/Auth'
 import { HomeScreen } from './screens/Home'
@@ -17,8 +17,9 @@ import { BottomNav, type Tab } from './components/Nav'
 import { Button, Icon } from './components/ui'
 import { Toaster } from './components/Toaster'
 import { todayISO } from './lib/dates'
-import { getSyncCode, isSyncing, syncNow } from './lib/sync'
+import { isSyncing, syncNow } from './lib/sync'
 import { isSocialEnabled, publishSocial } from './lib/social'
+import { type Account, getCachedAccount, getToken, validateSession } from './lib/account'
 
 type Route =
   | { name: 'home' | 'calendar' | 'stats' | 'exercises' | 'profile' }
@@ -87,17 +88,46 @@ function Splash() {
   )
 }
 
+/**
+ * Prepara il database locale per l'account: adotta i dati di un profilo 1.x
+ * (o di un backup importato) se presenti, altrimenti crea la riga profilo.
+ */
+function prepareLocalData(account: Account) {
+  const owner = getLocalOwner()
+  if (owner && owner !== account.id) resetLocalData()
+  if (owner !== account.id) adoptLocalData(account.id, account.name)
+  ensureLocalUser(account)
+  setLocalOwner(account.id)
+}
+
 export default function App() {
   const [ready, setReady] = useState(false)
   const [bootError, setBootError] = useState<string | null>(null)
-  const [sessionId, setSessionId] = useState<string | null>(() => getSessionUserId())
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [route, setRoute] = useState<Route>(() => parseHash())
   const version = useSyncExternalStore(subscribe, getVersion)
 
   useEffect(() => {
     let alive = true
     initDb()
-      .then(() => alive && setReady(true))
+      .then(() => {
+        if (!alive) return
+        // offline-first: con token e account in cache entro subito
+        const cached = getCachedAccount()
+        if (getToken() && cached) {
+          prepareLocalData(cached)
+          setSessionId(cached.id)
+        }
+        setReady(true)
+        if (getToken()) {
+          void validateSession().then((fresh) => {
+            if (!alive || !fresh) return
+            prepareLocalData(fresh)
+            setSessionId(fresh.id)
+          })
+        }
+      })
       .catch((e: unknown) => {
         console.error(e)
         if (alive) setBootError(e instanceof Error ? e.message : 'Errore di inizializzazione')
@@ -105,6 +135,15 @@ export default function App() {
     return () => {
       alive = false
     }
+  }, [])
+
+  useEffect(() => {
+    const onExpired = () => {
+      setSessionId(null)
+      setNotice('Sessione scaduta: accedi di nuovo. I tuoi allenamenti sono al sicuro nel cloud.')
+    }
+    window.addEventListener('palestralogger:auth-expired', onExpired)
+    return () => window.removeEventListener('palestralogger:auth-expired', onExpired)
   }, [])
 
   useEffect(() => {
@@ -123,10 +162,7 @@ export default function App() {
   )
 
   useEffect(() => {
-    if (sessionId && ready && !user) {
-      setSessionUserId(null)
-      setSessionId(null)
-    }
+    if (sessionId && ready && !user) setSessionId(null)
   }, [sessionId, ready, user])
 
   // sync automatica: all'avvio, al ritorno in foreground e dopo le modifiche
@@ -135,14 +171,14 @@ export default function App() {
     if (!userId) return
     let timer: ReturnType<typeof setTimeout> | undefined
     const run = () => {
-      if (!getSyncCode(userId) || isSyncing()) return
+      if (!getCachedAccount() || isSyncing()) return
       void syncNow(userId).catch(() => {
-        /* l'errore viene mostrato nella card Sync */
+        /* l'errore viene mostrato nella card Account */
       })
     }
     const start = setTimeout(run, 1200)
     const unsubscribe = subscribe(() => {
-      if (!getSyncCode(userId) || isSyncing()) return
+      if (!getCachedAccount() || isSyncing()) return
       if (timer) clearTimeout(timer)
       timer = setTimeout(run, 5000)
     })
@@ -211,9 +247,11 @@ export default function App() {
     return (
       <>
         <AuthScreen
-          onLogin={(id) => {
-            setSessionUserId(id)
-            setSessionId(id)
+          notice={notice}
+          onAuthenticated={(account) => {
+            prepareLocalData(account)
+            setNotice(null)
+            setSessionId(account.id)
             navigate('home', true)
             setRoute({ name: 'home' })
           }}
@@ -230,8 +268,8 @@ export default function App() {
   const goTab = (t: Tab) => navigate(t === 'home' ? 'home' : t === 'calendar' ? 'cal' : t === 'stats' ? 'stats' : 'ex')
 
   const onLogout = () => {
-    setSessionUserId(null)
     setSessionId(null)
+    setNotice(null)
     navigate('home', true)
     setRoute({ name: 'home' })
   }

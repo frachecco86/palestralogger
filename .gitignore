@@ -11,3 +11,6 @@ public/*.wasm
 .vite
 *.log
 .smoke
+
+.recovery
+.smoke-account

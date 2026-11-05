@@ -103,6 +103,78 @@ export function deleteUser(userId: string): void {
   })
 }
 
+/** Svuota i dati locali (mantiene gli esercizi predefiniti). */
+export function resetLocalData(): void {
+  tx((db) => {
+    db.run('DELETE FROM workout_sets')
+    db.run('DELETE FROM workouts')
+    db.run('DELETE FROM exercises WHERE user_id IS NOT NULL')
+    db.run('DELETE FROM deleted_records')
+    db.run('DELETE FROM users')
+  })
+}
+
+/** Crea la riga profilo locale per l'account cloud (se manca). */
+export function ensureLocalUser(account: {
+  id: string
+  name: string
+  createdAt?: string
+}): User {
+  const existing = getUser(account.id)
+  if (existing) return existing
+
+  const now = new Date().toISOString()
+  const createdAt = account.createdAt || now
+  mutate(
+    'INSERT INTO users (id, name, pin_hash, pin_salt, pin_length, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [account.id, account.name?.trim() || 'Atleta', '', '', 0, createdAt, createdAt],
+  )
+  const created = getUser(account.id)
+  if (!created) throw new Error('Impossibile creare il profilo locale')
+  return created
+}
+
+/**
+ * Adotta nel nuovo account i dati già presenti sul dispositivo (provenienti da
+ * un profilo 1.x o da un backup .sqlite): rinumera il profilo migliore
+ * sull'account cloud e rimuove eventuali altri profili locali.
+ */
+export function adoptLocalData(accountId: string, name: string): boolean {
+  if (getUser(accountId)) return false
+  const source = queryOne<{ id: string; n: number }>(
+    `SELECT u.id AS id, COUNT(w.id) AS n
+       FROM users u LEFT JOIN workouts w ON w.user_id = u.id
+      GROUP BY u.id ORDER BY n DESC LIMIT 1`,
+  )
+  if (!source) return false
+
+  const db = getDb()
+  db.run('PRAGMA foreign_keys = OFF')
+  try {
+    tx((d) => {
+      d.run('UPDATE users SET id = ?, name = ? WHERE id = ?', [
+        accountId,
+        name?.trim() || 'Atleta',
+        source.id,
+      ])
+      d.run('UPDATE workouts SET user_id = ? WHERE user_id = ?', [accountId, source.id])
+      d.run('UPDATE exercises SET user_id = ? WHERE user_id = ?', [accountId, source.id])
+      d.run('UPDATE deleted_records SET user_id = ? WHERE user_id = ?', [accountId, source.id])
+      d.run(
+        'DELETE FROM workout_sets WHERE workout_id IN (SELECT id FROM workouts WHERE user_id <> ?)',
+        [accountId],
+      )
+      d.run('DELETE FROM workouts WHERE user_id <> ?', [accountId])
+      d.run('DELETE FROM exercises WHERE user_id IS NOT NULL AND user_id <> ?', [accountId])
+      d.run('DELETE FROM deleted_records WHERE user_id <> ?', [accountId])
+      d.run('DELETE FROM users WHERE id <> ?', [accountId])
+    })
+  } finally {
+    db.run('PRAGMA foreign_keys = ON')
+  }
+  return true
+}
+
 export function countWorkouts(userId: string): number {
   const r = queryOne<{ n: number }>('SELECT COUNT(*) AS n FROM workouts WHERE user_id = ?', [userId])
   return r?.n ?? 0

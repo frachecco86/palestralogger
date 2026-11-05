@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { User } from '../lib/types'
-import { getSyncCode } from '../lib/sync'
+import { getToken } from '../lib/account'
 import {
   activateSocial,
   deleteSocial,
@@ -73,7 +73,8 @@ export function FriendsScreen({
   const [busy, setBusy] = useState<string | null>(null)
   const [disableOpen, setDisableOpen] = useState(false)
 
-  const hasSync = !!getSyncCode(user.id)
+  // con l'account cloud l'identità è sempre disponibile
+  const hasSync = !!getToken()
 
   async function load(showSpinner = true) {
     if (!hasSync) {

@@ -5,11 +5,12 @@ import { addDays, todayISO } from '../lib/dates'
 export interface SyncProfile {
   id: string
   name: string
-  pinHash: string
-  pinSalt: string
-  pinLength: number
   createdAt: string
   updatedAt: string
+  /** Campi dei profili legacy (1.x): accettati in lettura, non più usati. */
+  pinHash?: string
+  pinSalt?: string
+  pinLength?: number
 }
 
 export interface SyncExercise {
@@ -59,9 +60,6 @@ export interface SyncPayload {
 interface RawProfile {
   id: string
   name: string
-  pin_hash: string
-  pin_salt: string
-  pin_length: number
   created_at: string
   updated_at: string
 }
@@ -156,9 +154,6 @@ export function buildSyncPayload(userId: string): SyncPayload {
     profile: {
       id: profile.id,
       name: profile.name,
-      pinHash: profile.pin_hash,
-      pinSalt: profile.pin_salt,
-      pinLength: profile.pin_length,
       createdAt: profile.created_at,
       updatedAt: profile.updated_at || profile.created_at,
     },
@@ -209,19 +204,13 @@ export function applySyncPayload(userId: string, remote: SyncPayload | null): Sy
     const localProfileTime = localProfile?.updated_at || localProfile?.created_at || ''
 
     tx((db) => {
-      // 0. profilo (nome e PIN) se il remoto è più recente
+      // 0. profilo (nome) se il remoto è più recente
       if (remote.profile && remoteProfileTime > localProfileTime) {
-        db.run(
-          'UPDATE users SET name = ?, pin_hash = ?, pin_salt = ?, pin_length = ?, updated_at = ? WHERE id = ?',
-          [
-            remote.profile.name,
-            remote.profile.pinHash,
-            remote.profile.pinSalt,
-            remote.profile.pinLength || 4,
-            remoteProfileTime,
-            userId,
-          ],
-        )
+        db.run('UPDATE users SET name = ?, updated_at = ? WHERE id = ?', [
+          remote.profile.name,
+          remoteProfileTime,
+          userId,
+        ])
       }
 
       const insertTombstone = db.prepare(
@@ -316,17 +305,11 @@ export function importSyncProfile(profile: SyncProfile): string {
   const existing = queryOne<RawProfile>('SELECT * FROM users WHERE id = ?', [profile.id])
   if (existing) {
     tx((db) => {
-      db.run(
-        'UPDATE users SET name = ?, pin_hash = ?, pin_salt = ?, pin_length = ?, updated_at = ? WHERE id = ?',
-        [
-          profile.name,
-          profile.pinHash,
-          profile.pinSalt,
-          profile.pinLength || 4,
-          profile.updatedAt || new Date().toISOString(),
-          profile.id,
-        ],
-      )
+      db.run('UPDATE users SET name = ?, updated_at = ? WHERE id = ?', [
+        profile.name,
+        profile.updatedAt || new Date().toISOString(),
+        profile.id,
+      ])
     })
     return profile.id
   }
@@ -342,9 +325,9 @@ export function importSyncProfile(profile: SyncProfile): string {
       [
         id,
         name,
-        profile.pinHash,
-        profile.pinSalt,
-        profile.pinLength || 4,
+        '',
+        '',
+        0,
         profile.createdAt,
         profile.updatedAt || new Date().toISOString(),
       ],

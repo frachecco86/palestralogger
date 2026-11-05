@@ -13,7 +13,7 @@ export default defineConfig({
       manifest: {
         name: 'PalestraLogger',
         short_name: 'PalestraLogger',
-        description: 'Registra allenamenti, esercizi e progressi. Offline, sul tuo telefono.',
+        description: 'Registra allenamenti, esercizi e progressi. Nel cloud e offline.',
         lang: 'it',
         theme_color: '#0A0C09',
         background_color: '#0A0C09',

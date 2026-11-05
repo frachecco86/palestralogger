@@ -1,10 +1,9 @@
 import { getStore } from '@netlify/blobs'
 import { createHash, randomBytes } from 'node:crypto'
 
-const SYNC_STORE = 'palestralogger-sync'
+const ACCOUNTS_STORE = 'palestralogger-accounts'
 const SOCIAL_STORE = 'palestralogger-social'
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-const SYNC_RE = /^[A-Z0-9]{4}(-[A-Z0-9]{4}){3}$/
 const FRIEND_RE = /^[A-Z0-9]{4}(-[A-Z0-9]{4}){2}$/
 const MAX_FRIENDS = 100
 const MAX_REQUESTS = 100
@@ -67,16 +66,12 @@ function blobOptions(event: Event) {
   return {}
 }
 
-function syncStore(event: Event) {
-  return getStore({ name: SYNC_STORE, ...blobOptions(event) })
-}
-
 function socialStore(event: Event) {
   return getStore({ name: SOCIAL_STORE, ...blobOptions(event) })
 }
 
-function syncKey(code: string): string {
-  return 'd/' + createHash('sha256').update(code).digest('hex')
+function accountsStore(event: Event) {
+  return getStore({ name: ACCOUNTS_STORE, ...blobOptions(event) })
 }
 
 function newFriendCode(): string {
@@ -94,20 +89,33 @@ function normalizeFriendCode(raw: string): string {
   return clean.replace(/(.{4})(?=.)/g, '$1-')
 }
 
+interface AccountRecord {
+  id: string
+  uid: string
+  name: string
+  passwordChangedAt: string
+}
+
+/**
+ * L'identità è la sessione dell'account cloud (token), non più un codice sync.
+ * `uid` è l'identità social: per gli account migrati da un profilo legacy resta
+ * quella storica, così le amicizie esistenti continuano a funzionare.
+ */
 async function authenticate(
   event: Event,
-  codeRaw: string,
+  tokenRaw: string,
 ): Promise<{ uid: string; name: string }> {
-  const code = String(codeRaw ?? '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9-]/g, '')
-  if (!SYNC_RE.test(code)) throw new HttpError(401, 'auth')
-  const doc = (await syncStore(event).get(syncKey(code), { type: 'json' })) as
-    | { payload?: { profile?: { id?: string; name?: string } } }
+  const token = String(tokenRaw ?? '').trim()
+  if (token.length < 20 || token.length > 100) throw new HttpError(401, 'auth')
+  const accounts = accountsStore(event)
+  const hash = createHash('sha256').update(token).digest('hex')
+  const session = (await accounts.getJSON('tok/' + hash)) as
+    | { accountId?: string; pwStamp?: string }
     | null
-  const profile = doc?.payload?.profile
-  if (!profile?.id) throw new HttpError(401, 'auth')
-  return { uid: profile.id, name: profile.name || 'Atleta' }
+  if (!session?.accountId) throw new HttpError(401, 'auth')
+  const account = (await accounts.getJSON('acct/' + session.accountId)) as AccountRecord | null
+  if (!account || account.passwordChangedAt !== session.pwStamp) throw new HttpError(401, 'auth')
+  return { uid: account.uid || account.id, name: account.name || 'Atleta' }
 }
 
 async function getDoc(event: Event, uid: string): Promise<SocialDoc | null> {
@@ -204,10 +212,10 @@ export const handler = async (event: Event) => {
   }
 
   const action = String(body.action ?? '')
-  const code = String(body.code ?? '')
+  const token = String(body.token ?? '')
 
   try {
-    const identity = await authenticate(event, code)
+    const identity = await authenticate(event, token)
     const uid = identity.uid
     const store = socialStore(event)
 
