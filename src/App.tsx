@@ -19,6 +19,7 @@ import { Toaster } from './components/Toaster'
 import { todayISO } from './lib/dates'
 import { isSyncing, syncNow } from './lib/sync'
 import { isSocialEnabled, publishSocial } from './lib/social'
+import { syncPhotos } from './lib/photo'
 import { type Account, getCachedAccount, getToken, validateSession } from './lib/account'
 
 type Route =
@@ -170,11 +171,19 @@ export default function App() {
   useEffect(() => {
     if (!userId) return
     let timer: ReturnType<typeof setTimeout> | undefined
+    let lastPhotoSync = 0
     const run = () => {
       if (!getCachedAccount() || isSyncing()) return
-      void syncNow(userId).catch(() => {
-        /* l'errore viene mostrato nella card Account */
-      })
+      void syncNow(userId)
+        .then(() => {
+          // le foto si caricano in background, non a ogni modifica
+          if (Date.now() - lastPhotoSync < 60_000) return
+          lastPhotoSync = Date.now()
+          return syncPhotos(userId)
+        })
+        .catch(() => {
+          /* l'errore viene mostrato nella card Account */
+        })
     }
     const start = setTimeout(run, 1200)
     const unsubscribe = subscribe(() => {

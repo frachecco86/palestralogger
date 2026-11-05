@@ -47,6 +47,17 @@ CREATE TABLE IF NOT EXISTS workout_sets (
   FOREIGN KEY (exercise_id) REFERENCES exercises(id)
 );
 
+CREATE TABLE IF NOT EXISTS exercise_photos (
+  user_id TEXT NOT NULL,
+  exercise_id TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  bytes BLOB NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, exercise_id),
+  FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_photos_user ON exercise_photos(user_id);
 CREATE INDEX IF NOT EXISTS idx_workouts_user_date ON workouts(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_sets_workout ON workout_sets(workout_id);
 CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);

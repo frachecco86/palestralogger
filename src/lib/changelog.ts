@@ -10,6 +10,26 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.1.0',
+    title: 'Foto degli esercizi e peso al volo',
+    items: [
+      'Puoi aggiungere una foto a ogni esercizio (la macchina, l’attrezzo, la tua posizione): compare in piccolo accanto al nome.',
+      'Nuovo tasto «applica a tutte» accanto al peso: copia i kg della serie che stai modificando su tutte le altre, senza reinserirli.',
+      '«Aggiungi esercizio» ora è disponibile solo in modalità modifica: niente più cambi di modalità automatici.',
+      'La foto viene compressa sul telefono, resta disponibile offline ed è salvata anche nel tuo account: la ritrovi su ogni dispositivo.',
+      'Tocca la miniatura per vederla in grande.',
+    ],
+  },
+  {
+    version: '2.0.2',
+    title: 'Lettura davvero in sola lettura',
+    items: [
+      'Corretto: in un allenamento salvato «Aggiungi serie» era ancora attivo anche senza modalità modifica.',
+      'Ora senza toccare «Modifica» carichi e ripetizioni si leggono soltanto: niente pulsanti +/–, niente aggiunta o rimozione di serie.',
+      'Con «Modifica» tornano tutti i comandi. Un allenamento nuovo parte già in modifica, uno salvato si apre in lettura.',
+    ],
+  },
+  {
     version: '2.0.1',
     title: 'Niente più tocchi per sbaglio',
     items: [

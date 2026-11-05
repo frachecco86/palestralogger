@@ -3,6 +3,10 @@ import { applySyncPayload, buildSyncPayload } from '../src/db/sync-queries'
 import {
   adoptLocalData,
   createUser,
+  deleteExercisePhoto,
+  getExercisePhoto,
+  listExercisePhotoMeta,
+  saveExercisePhoto,
   getUser,
   ensureLocalUser,
   resetLocalData,
@@ -297,6 +301,7 @@ async function smokeAccount() {
     entries: [{ exerciseId: 'def-squat-bilanciere', sets: [{ reps: 5, weight: 120 }] }],
   })
 
+  saveExercisePhoto(legacy.id, 'def-panca-piana', 'image/jpeg', new Uint8Array([0xff, 0xd8, 0xff, 1]))
   const adopted = adoptLocalData('account-1', 'Account Cloud')
   const user = getUser('account-1')
   console.log('adozione locale:', adopted, '| profilo:', user?.name, '| workout:', listWorkouts('account-1').length)
@@ -304,12 +309,27 @@ async function smokeAccount() {
   if (user?.name !== 'Account Cloud') throw new Error('nome account non applicato')
   if (listWorkouts('account-1').length !== 2) throw new Error('allenamenti non migrati')
   if (getUser(legacy.id)) throw new Error('vecchio profilo non rimosso')
+  if (listExercisePhotoMeta('account-1').length !== 1) throw new Error('foto non migrata con i dati')
 
   // un secondo account sullo stesso telefono non deve vedere i dati del primo
   resetLocalData()
   ensureLocalUser({ id: 'account-2', name: 'Altro' })
   if (listWorkouts('account-2').length !== 0) throw new Error('dati non azzerati')
   console.log('account switch: OK')
+
+  saveExercisePhoto('account-2', 'def-panca-piana', 'image/jpeg', new Uint8Array([1, 2, 3, 4]))
+  const photo = getExercisePhoto('account-2', 'def-panca-piana')
+  console.log('foto locale:', photo?.mime, photo?.bytes.length)
+  if (!photo || photo.bytes.length !== 4) throw new Error('foto non salvata')
+  if (!listExercisePhotoMeta('account-2').some((m) => m.exerciseId === 'def-panca-piana')) {
+    throw new Error('metadati foto mancanti')
+  }
+  deleteExercisePhoto('account-2', 'def-panca-piana')
+  if (getExercisePhoto('account-2', 'def-panca-piana')) throw new Error('foto non eliminata')
+  saveExercisePhoto('account-2', 'def-panca-piana', 'image/jpeg', new Uint8Array([9]))
+  resetLocalData()
+  if (listExercisePhotoMeta('account-2').length !== 0) throw new Error('reset non ha pulito le foto')
+  console.log('foto locali: OK')
 }
 
 main()

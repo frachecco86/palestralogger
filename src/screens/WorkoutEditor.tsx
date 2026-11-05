@@ -4,15 +4,19 @@ import { MUSCLE_COLORS } from '../lib/types'
 import {
   deleteWorkout,
   getExercise,
+  getExercisePhoto,
   getWorkout,
   lastPerformance,
   saveWorkout,
+  type ExercisePhoto,
 } from '../db/queries'
 import { addDays, formatDate, todayISO } from '../lib/dates'
 import { formatKg, plural } from '../lib/format'
 import { toast } from '../lib/live'
+import { addExercisePhoto, removeExercisePhoto, syncPhotos } from '../lib/photo'
 import { Button, Card, Chip, Icon, Sheet, cx } from '../components/ui'
 import { ExercisePicker } from '../components/ExercisePicker'
+import { ExercisePhotoSheet, ExerciseThumb } from '../components/ExercisePhoto'
 import { ShareWorkoutSheet } from '../components/ShareWorkoutSheet'
 
 interface EditorSet {
@@ -39,6 +43,7 @@ function NumInput({
   max = 1000,
   width = 'w-10',
   label,
+  readOnly = false,
 }: {
   value: number
   onChange: (v: number) => void
@@ -47,10 +52,27 @@ function NumInput({
   max?: number
   width?: string
   label: string
+  readOnly?: boolean
 }) {
   const [draft, setDraft] = useState<string | null>(null)
   const shown = draft ?? (Number.isInteger(value) ? String(value) : value.toFixed(1).replace('.', ','))
   const clamp = (v: number) => Math.min(max, Math.max(min, Math.round(v * 100) / 100))
+
+  // In sola lettura il valore è testo: niente input, niente pulsanti +/–.
+  if (readOnly) {
+    return (
+      <span
+        aria-label={`${label}: ${shown}`}
+        className={cx(
+          'flex h-9 items-center justify-center rounded-lg border border-line bg-surface2/50 text-[13px] font-semibold tabular text-muted',
+          width,
+        )}
+      >
+        {shown}
+      </span>
+    )
+  }
+
   return (
     <div className="flex items-center h-9 rounded-lg bg-surface2 border border-line overflow-hidden">
       <button
@@ -123,7 +145,20 @@ export function WorkoutEditor({
   // Gli esercizi di un allenamento già salvato partono chiusi: si espandono col tasto.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(entries.map((e) => e.key)))
   // Rimuovere esercizi o serie è possibile solo attivando la modalità modifica.
-  const [editMode, setEditMode] = useState(false)
+  // Un allenamento nuovo parte già in modifica; uno salvato si apre in lettura.
+  const [editMode, setEditMode] = useState(() => !loaded)
+  // Foto esercizio (miniatura accanto al nome), salvate in locale + cloud
+  const [photos, setPhotos] = useState<Record<string, ExercisePhoto>>(() => {
+    const map: Record<string, ExercisePhoto> = {}
+    for (const e of entries) {
+      const photo = getExercisePhoto(userId, e.exercise.id)
+      if (photo) map[e.exercise.id] = photo
+    }
+    return map
+  })
+  const [photoView, setPhotoView] = useState<string | null>(null)
+  const photoTarget = useRef<string | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const initialAdded = useRef(false)
   const [confirmClose, setConfirmClose] = useState(false)
@@ -177,6 +212,8 @@ export function WorkoutEditor({
       setPickerOpen(false)
       return
     }
+    const photo = getExercisePhoto(userId, exercise.id)
+    if (photo) setPhotos((prev) => ({ ...prev, [exercise.id]: photo }))
     const last = lastPerformance(userId, exercise.id)
     const baseSets = last && last.date !== date
       ? last.sets.slice(0, 5)
@@ -214,8 +251,7 @@ export function WorkoutEditor({
     setEntries((prev) => prev.map((e) => (e.key === entryKey ? fn(e) : e)))
   }
 
-  function removeEntry(entryKey: string) {
-    setEntries((prev) => prev.filter((e) => e.key !== entryKey))
+  function removeEntry(entryKey: string) {    setEntries((prev) => prev.filter((e) => e.key !== entryKey))
     setCollapsed((prev) => {
       if (!prev.has(entryKey)) return prev
       const next = new Set(prev)
@@ -231,6 +267,75 @@ export function WorkoutEditor({
       else next.add(entryKey)
       return next
     })
+  }
+
+  // Scarica le foto mancanti degli esercizi di questo allenamento
+  const exerciseIdsKey = useMemo(
+    () => entries.map((e) => e.exercise.id).join('|'),
+    [entries],
+  )
+  useEffect(() => {
+    const ids = exerciseIdsKey ? exerciseIdsKey.split('|') : []
+    if (ids.length === 0) return
+    let alive = true
+    void syncPhotos(userId, ids)
+      .then((changed) => {
+        if (!alive || changed.length === 0) return
+        setPhotos((prev) => {
+          const next = { ...prev }
+          for (const id of changed) {
+            const photo = getExercisePhoto(userId, id)
+            if (photo) next[id] = photo
+            else delete next[id]
+          }
+          return next
+        })
+      })
+      .catch(() => {
+        /* offline: restano le foto già presenti */
+      })
+    return () => {
+      alive = false
+    }
+  }, [userId, exerciseIdsKey])
+
+  function pickPhoto(exerciseId: string) {
+    photoTarget.current = exerciseId
+    photoInputRef.current?.click()
+  }
+
+  async function handlePhotoFile(file: File) {
+    const exerciseId = photoTarget.current
+    photoTarget.current = null
+    if (!exerciseId) return
+    try {
+      const { uploaded } = await addExercisePhoto(userId, exerciseId, file)
+      const photo = getExercisePhoto(userId, exerciseId)
+      if (photo) setPhotos((prev) => ({ ...prev, [exerciseId]: photo }))
+      setPhotoView(exerciseId)
+      toast(
+        uploaded
+          ? 'Foto salvata'
+          : 'Foto salvata sul telefono: sarà caricata appena torni online',
+      )
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Foto non salvata', 'err')
+    }
+  }
+
+  async function removePhoto(exerciseId: string) {
+    try {
+      await removeExercisePhoto(userId, exerciseId)
+      setPhotos((prev) => {
+        const next = { ...prev }
+        delete next[exerciseId]
+        return next
+      })
+      setPhotoView(null)
+      toast('Foto rimossa')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Rimozione non riuscita', 'err')
+    }
   }
 
   function handleSave() {
@@ -382,25 +487,26 @@ export function WorkoutEditor({
             Esercizi
             {entries.length > 0 && <span className="font-normal text-faint"> · {entries.length}</span>}
           </p>
-          {entries.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setEditMode((v) => !v)}
-              aria-pressed={editMode}
-              aria-label={editMode ? 'Disattiva modifica esercizi' : 'Attiva modifica esercizi'}
-              className={cx(
-                'press flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11.5px] font-semibold',
-                editMode
-                  ? 'border-lime/40 bg-lime/15 text-lime'
-                  : 'border-line bg-surface2 text-muted',
-              )}
-            >
-              <Icon name={editMode ? 'check' : 'edit'} size={13} />
-              {editMode ? 'Fine' : 'Modifica'}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (editMode) setPickerOpen(false)
+              setEditMode(!editMode)
+            }}
+            aria-pressed={editMode}
+            aria-label={editMode ? 'Disattiva modifica esercizi' : 'Attiva modifica esercizi'}
+            className={cx(
+              'press flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11.5px] font-semibold',
+              editMode
+                ? 'border-lime/40 bg-lime/15 text-lime'
+                : 'border-line bg-surface2 text-muted',
+            )}
+          >
+            <Icon name={editMode ? 'check' : 'edit'} size={13} />
+            {editMode ? 'Fine' : 'Modifica'}
+          </button>
         </div>
-        {editMode && (
+        {editMode && loaded && (
           <p className="mt-2 rounded-lg border border-danger/25 bg-danger/[0.07] px-2.5 py-1.5 text-[10.5px] leading-relaxed text-danger">
             Modalità modifica attiva: il cestino rimuove l’esercizio, la × toglie una serie.
           </p>
@@ -418,6 +524,12 @@ export function WorkoutEditor({
                 <span
                   className="h-7 w-1 shrink-0 rounded-full"
                   style={{ background: MUSCLE_COLORS[entry.exercise.muscle] }}
+                />
+                <ExerciseThumb
+                  photo={photos[entry.exercise.id]}
+                  editable={editMode}
+                  name={entry.exercise.name}
+                  onClick={() => setPhotoView(entry.exercise.id)}
                 />
                 <button
                   type="button"
@@ -489,8 +601,8 @@ export function WorkoutEditor({
                   <span className="w-5">#</span>
                   <span className="w-[88px] text-center">Reps</span>
                   <span className="w-2" />
-                  <span className="w-[96px] text-center">Peso</span>
-                  <span className="w-7 text-center">Kg</span>
+                  <span className="w-[96px] text-center">Peso kg</span>
+                  {editMode && entry.sets.length > 1 && <span className="w-[60px]" />}
                 </div>
 
                 <div className="space-y-1.5">
@@ -506,6 +618,7 @@ export function WorkoutEditor({
                         max={200}
                         width="w-8"
                         label={`ripetizioni serie ${setIdx + 1}`}
+                        readOnly={!editMode}
                         onChange={(v) =>
                           updateEntry(entry.key, (e) => ({
                             ...e,
@@ -521,6 +634,7 @@ export function WorkoutEditor({
                         max={999}
                         width="w-10"
                         label={`peso serie ${setIdx + 1}`}
+                        readOnly={!editMode}
                         onChange={(v) =>
                           updateEntry(entry.key, (e) => ({
                             ...e,
@@ -528,6 +642,23 @@ export function WorkoutEditor({
                           }))
                         }
                       />
+                      {editMode && entry.sets.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateEntry(entry.key, (e) => ({
+                              ...e,
+                              sets: e.sets.map((s) => ({ ...s, weight: set.weight })),
+                            }))
+                            toast('Peso di ' + set.weight + ' kg applicato a tutte le serie')
+                          }}
+                          className="press flex h-8 w-6 shrink-0 items-center justify-center rounded-lg text-faint hover:text-lime"
+                          aria-label={'Applica il peso della serie ' + (setIdx + 1) + ' a tutte le serie'}
+                          title="Applica questo peso a tutte le serie"
+                        >
+                          <Icon name="copy" size={12} />
+                        </button>
+                      )}
                       {editMode && (
                         <button
                           type="button"
@@ -548,34 +679,42 @@ export function WorkoutEditor({
                   ))}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateEntry(entry.key, (e) => {
-                      const last = e.sets[e.sets.length - 1] ?? { reps: 10, weight: 0 }
-                      return {
-                        ...e,
-                        sets: [...e.sets, { key: key(), reps: last.reps, weight: last.weight }],
-                      }
-                    })
-                  }
-                  className="press mt-2 flex h-8 w-full items-center justify-center gap-1 rounded-lg border border-dashed border-line2 text-[11.5px] font-medium text-muted hover:text-text"
-                >
-                  <Icon name="plus" size={13} /> Aggiungi serie
-                </button>
+                {editMode && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateEntry(entry.key, (e) => {
+                        const last = e.sets[e.sets.length - 1] ?? { reps: 10, weight: 0 }
+                        return {
+                          ...e,
+                          sets: [...e.sets, { key: key(), reps: last.reps, weight: last.weight }],
+                        }
+                      })
+                    }
+                    className="press mt-2 flex h-8 w-full items-center justify-center gap-1 rounded-lg border border-dashed border-line2 text-[11.5px] font-medium text-muted hover:text-text"
+                  >
+                    <Icon name="plus" size={13} /> Aggiungi serie
+                  </button>
+                )}
               </div>
               )}
             </Card>
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setPickerOpen(true)}
-          className="press mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-line2 bg-surface/50 text-[13.5px] font-semibold text-muted hover:text-text hover:border-lime/40"
-        >
-          <Icon name="plus" size={18} /> Aggiungi esercizio
-        </button>
+        {editMode ? (
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="press mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-line2 bg-surface/50 text-[13.5px] font-semibold text-muted hover:text-text hover:border-lime/40"
+          >
+            <Icon name="plus" size={18} /> Aggiungi esercizio
+          </button>
+        ) : (
+          <div className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-line2/70 bg-surface/20 text-[12px] text-faint">
+            <Icon name="lock" size={14} /> Tocca «Modifica» per aggiungere esercizi
+          </div>
+        )}
 
         {loaded && (
           <button
@@ -614,6 +753,34 @@ export function WorkoutEditor({
           </Button>
         </div>
       </div>
+
+      <ExercisePhotoSheet
+        open={!!photoView}
+        photo={photoView ? photos[photoView] : undefined}
+        exerciseName={entries.find((e) => e.exercise.id === photoView)?.exercise.name ?? ''}
+        editable={editMode}
+        onClose={() => setPhotoView(null)}
+        onReplace={() => {
+          const id = photoView
+          setPhotoView(null)
+          if (id) pickPhoto(id)
+        }}
+        onRemove={() => {
+          if (photoView) void removePhoto(photoView)
+        }}
+      />
+
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) void handlePhotoFile(file)
+          e.target.value = ''
+        }}
+      />
 
       <ExercisePicker
         open={pickerOpen}

@@ -41,6 +41,7 @@ export type IconName =
   | 'refresh'
   | 'users'
   | 'share'
+  | 'camera'
 
 const PATHS: Record<IconName, ReactNode> = {
   home: <path d="M3.5 10.5 12 3.5l8.5 7M5.5 9.5V20h13V9.5" />,
@@ -130,6 +131,12 @@ const PATHS: Record<IconName, ReactNode> = {
       <circle cx="6" cy="12" r="2.5" />
       <circle cx="18" cy="18.5" r="2.5" />
       <path d="m8.2 10.8 7.6-4M8.2 13.2l7.6 4" />
+    </>
+  ),
+  camera: (
+    <>
+      <path d="M3 9h3.2l1.5-2.6h8.6L17.8 9H21v10.5H3z" />
+      <circle cx="12" cy="14" r="3.4" />
     </>
   ),
 }

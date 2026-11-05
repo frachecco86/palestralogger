@@ -97,6 +97,7 @@ export function deleteUser(userId: string): void {
   tx((db) => {
     db.run('DELETE FROM workout_sets WHERE workout_id IN (SELECT id FROM workouts WHERE user_id = ?)', [userId])
     db.run('DELETE FROM workouts WHERE user_id = ?', [userId])
+    db.run('DELETE FROM exercise_photos WHERE user_id = ?', [userId])
     db.run('DELETE FROM exercises WHERE user_id = ?', [userId])
     db.run('DELETE FROM deleted_records WHERE user_id = ?', [userId])
     db.run('DELETE FROM users WHERE id = ?', [userId])
@@ -106,6 +107,7 @@ export function deleteUser(userId: string): void {
 /** Svuota i dati locali (mantiene gli esercizi predefiniti). */
 export function resetLocalData(): void {
   tx((db) => {
+    db.run('DELETE FROM exercise_photos')
     db.run('DELETE FROM workout_sets')
     db.run('DELETE FROM workouts')
     db.run('DELETE FROM exercises WHERE user_id IS NOT NULL')
@@ -160,6 +162,7 @@ export function adoptLocalData(accountId: string, name: string): boolean {
       d.run('UPDATE workouts SET user_id = ? WHERE user_id = ?', [accountId, source.id])
       d.run('UPDATE exercises SET user_id = ? WHERE user_id = ?', [accountId, source.id])
       d.run('UPDATE deleted_records SET user_id = ? WHERE user_id = ?', [accountId, source.id])
+      d.run('UPDATE exercise_photos SET user_id = ? WHERE user_id = ?', [accountId, source.id])
       d.run(
         'DELETE FROM workout_sets WHERE workout_id IN (SELECT id FROM workouts WHERE user_id <> ?)',
         [accountId],
@@ -167,6 +170,7 @@ export function adoptLocalData(accountId: string, name: string): boolean {
       d.run('DELETE FROM workouts WHERE user_id <> ?', [accountId])
       d.run('DELETE FROM exercises WHERE user_id IS NOT NULL AND user_id <> ?', [accountId])
       d.run('DELETE FROM deleted_records WHERE user_id <> ?', [accountId])
+      d.run('DELETE FROM exercise_photos WHERE user_id <> ?', [accountId])
       d.run('DELETE FROM users WHERE id <> ?', [accountId])
     })
   } finally {
@@ -771,4 +775,66 @@ export function exerciseExists(id: string): boolean {
 
 export function dbFileSize(): number {
   return getDb().export().length
+}
+
+// ---------- Foto esercizio ----------
+
+export interface ExercisePhoto {
+  exerciseId: string
+  mime: string
+  bytes: Uint8Array
+  updatedAt: string
+}
+
+interface RawPhoto {
+  exercise_id: string
+  mime: string
+  bytes: Uint8Array
+  updated_at: string
+}
+
+function mapPhoto(r: RawPhoto): ExercisePhoto {
+  return {
+    exerciseId: r.exercise_id,
+    mime: r.mime,
+    bytes: r.bytes instanceof Uint8Array ? r.bytes : new Uint8Array(r.bytes as ArrayBufferLike),
+    updatedAt: r.updated_at,
+  }
+}
+
+export function getExercisePhoto(userId: string, exerciseId: string): ExercisePhoto | null {
+  const row = queryOne<RawPhoto>(
+    'SELECT exercise_id, mime, bytes, updated_at FROM exercise_photos WHERE user_id = ? AND exercise_id = ?',
+    [userId, exerciseId],
+  )
+  return row ? mapPhoto(row) : null
+}
+
+export function listExercisePhotoMeta(userId: string): Array<{ exerciseId: string; updatedAt: string }> {
+  return query<{ exercise_id: string; updated_at: string }>(
+    'SELECT exercise_id, updated_at FROM exercise_photos WHERE user_id = ?',
+    [userId],
+  ).map((r) => ({ exerciseId: r.exercise_id, updatedAt: r.updated_at }))
+}
+
+/** Salva (o sostituisce) la foto di un esercizio. Restituisce l'updatedAt usato. */
+export function saveExercisePhoto(
+  userId: string,
+  exerciseId: string,
+  mime: string,
+  bytes: Uint8Array,
+  updatedAt = new Date().toISOString(),
+): string {
+  mutate(
+    `INSERT INTO exercise_photos (user_id, exercise_id, mime, bytes, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, exercise_id) DO UPDATE SET
+       mime = excluded.mime, bytes = excluded.bytes, updated_at = excluded.updated_at`,
+    [userId, exerciseId, mime, bytes, updatedAt],
+  )
+  return updatedAt
+}
+
+export function deleteExercisePhoto(userId: string, exerciseId: string): void {
+  mutate('DELETE FROM exercise_photos WHERE user_id = ? AND exercise_id = ?', [userId, exerciseId])
 }

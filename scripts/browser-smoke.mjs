@@ -125,6 +125,10 @@ process.on('unhandledRejection', (e) => errors.push('unhandled: ' + (e && e.mess
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 const body = () => window.document.body.textContent.replace(/\s+/g, ' ').trim()
+const aria = (el) => el.getAttribute('aria-label') || ''
+const buttons = () => [...window.document.querySelectorAll('button')]
+const buttonWithText = (text) =>
+  buttons().find((b) => (b.textContent || '').replace(/\s+/g, ' ').trim() === text)
 
 function setValue(el, value) {
   if (!el) throw new Error('input non trovato')
@@ -196,7 +200,27 @@ const notes = window.document.querySelector('textarea')
 setValue(notes, 'Nota di prova')
 await wait(300)
 
+// "applica a tutte": copia i kg della serie 1 su tutte le serie
+const applyAll = window.document.querySelector(
+  'button[aria-label="Applica il peso della serie 1 a tutte le serie"]',
+)
+if (!applyAll) throw new Error('tasto «applica a tutte» mancante')
+applyAll.click()
+await wait(350)
+const w2 = window.document.querySelector('input[aria-label="peso serie 2"]')
+const w3 = window.document.querySelector('input[aria-label="peso serie 3"]')
+if (!w2 || !w3 || w2.value !== '80' || w3.value !== '80')
+  throw new Error('peso non applicato a tutte le serie')
+setValue(w2, '0')
+setValue(w3, '0')
+await wait(250)
+
+if (!buttons().some((b) => aria(b).startsWith('Aggiungi foto')))
+  throw new Error('tasto foto mancante in modalità modifica')
+
 console.log('5. serie:', window.document.querySelectorAll('input[aria-label^="ripetizioni"]').length)
+if (![...window.document.querySelectorAll('button')].some((b) => (b.textContent || '').trim() === 'Aggiungi serie'))
+  throw new Error('«Aggiungi serie» assente in un nuovo allenamento')
 await clickText('Salva', { exact: true })
 await wait(1600)
 
@@ -211,24 +235,43 @@ await wait(700)
 // schede esercizio compresse dopo il salvataggio + cancellazione solo in modalità modifica
 if (window.document.querySelector('input[aria-label="ripetizioni serie 1"]'))
   throw new Error('esercizio salvato non compresso')
-const aria = (el) => el.getAttribute('aria-label') || ''
-const buttons = () => [...window.document.querySelectorAll('button')]
 if (buttons().some((b) => aria(b).startsWith('Rimuovi ')))
   throw new Error('cestino visibile senza modalità modifica')
 const expand = buttons().find((b) => aria(b).startsWith('Espandi '))
 if (!expand) throw new Error('icona espandi mancante')
 expand.click()
 await wait(400)
-if (!window.document.querySelector('input[aria-label="ripetizioni serie 1"]'))
+if (!window.document.querySelector('span[aria-label^="ripetizioni serie 1"]'))
   throw new Error('espansione non mostra le serie')
+// in sola lettura: niente input, niente aggiunta serie/esercizi/foto
+if (buttonWithText('Aggiungi esercizio'))
+  throw new Error('«Aggiungi esercizio» attivo in sola lettura')
+if (!body().includes('Tocca «Modifica» per aggiungere esercizi'))
+  throw new Error('avviso di sola lettura mancante')
+if (buttons().some((b) => aria(b).startsWith('Aggiungi foto')))
+  throw new Error('foto modificabile in sola lettura')
+const addSet = () => buttonWithText('Aggiungi serie')
+if (addSet()) throw new Error('«Aggiungi serie» attivo senza modalità modifica')
+if (window.document.querySelector('input[aria-label^="ripetizioni"]'))
+  throw new Error('input attivo senza modalità modifica')
 await clickText('Modifica', { exact: true })
 await wait(300)
 if (!buttons().some((b) => aria(b).startsWith('Rimuovi Panca')))
   throw new Error('cestino non compare in modalità modifica')
+if (!addSet()) throw new Error('«Aggiungi serie» assente in modalità modifica')
+if (!window.document.querySelector('input[aria-label="ripetizioni serie 1"]'))
+  throw new Error('input non attivo in modalità modifica')
+if (!buttonWithText('Aggiungi esercizio'))
+  throw new Error('«Aggiungi esercizio» non attivo in modalità modifica')
+if (!buttons().some((b) => aria(b).startsWith('Aggiungi foto')))
+  throw new Error('foto non attivabile in modalità modifica')
 await clickText('Fine', { exact: true })
 await wait(300)
 if (buttons().some((b) => aria(b).startsWith('Rimuovi Panca')))
   throw new Error('cestino ancora visibile dopo aver chiuso la modifica')
+if (addSet()) throw new Error('«Aggiungi serie» ancora attivo dopo la modifica')
+if (buttonWithText('Aggiungi esercizio'))
+  throw new Error('«Aggiungi esercizio» ancora attivo dopo la modifica')
 console.log('6a. schede compresse + modifica protetta ok')
 
 await clickText('Condividi come immagine')

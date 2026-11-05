@@ -21,6 +21,9 @@ del browser o cambiare telefono non li cancella più.
 - **Libreria esercizi**: ~60 esercizi principali pre-caricati (panca piana, leg press, squat, stacco,
   lat machine, trazioni, military press, curl, hip thrust, plank, cardio…), ricerca con
   autocompletamento per nome e attrezzatura, filtro per gruppo muscolare.
+- **Foto esercizio**: una foto per esercizio (macchina, attrezzo, posizione), compressa sul telefono,
+  visibile in miniatura accanto al nome e salvata anche nel cloud. In modifica c'è anche «applica a
+  tutte» per copiare i kg di una serie su tutte le altre.
 - **Esercizi personalizzati**: creazione al volo dalla ricerca («Crea "xyz"») con gruppo muscolare e
   attrezzatura; eliminabili se non usati.
 - **Auto-comportamento**: quando aggiungi un esercizio già fatto, vengono proposte le serie
@@ -91,6 +94,10 @@ palestralogger-sync
 palestralogger-social
   u/<uid>                      -> profilo social (codice amico, amici, snapshot)
   code/<codice amico>          -> uid
+palestralogger-photos
+  idx/<id account>             -> indice foto (metadati + cancellazioni)
+  p/<id account>/<esercizio>   -> immagine compressa (JPEG/PNG/WebP)
+  x/<id account>/<esercizio>   -> tombstone di cancellazione
 ```
 
 ## Sincronizzazione
@@ -151,13 +158,15 @@ registrazione, allenamento con note, statistiche, amici e riavvio con sessione s
 
 ```
 src/
-  db/          SQLite: bootstrap, schema, seed esercizi, query tipizzate, sync payload/merge
+  db/          SQLite: bootstrap, schema, seed esercizi, query tipizzate, sync payload/merge,
+               foto esercizio (BLOB locale)
   lib/         account (API + sessione), sync, date, formattazione, sessione locale,
                hook live data, social, share-card (immagine allenamento)
   components/  UI kit, bottom nav, picker esercizi, toaster, foglio condivisione, card account
   screens/     Auth, Home, WorkoutEditor, Calendario, Statistiche, Esercizi, Profilo, Amici
 netlify/
-  functions/   account.ts (registrazione/accesso/sync/recovery), social.ts (amici)
+  functions/   account.ts (registrazione/accesso/sync/recovery), photo.ts (foto esercizi),
+               social.ts (amici)
 scripts/       copia wasm, generazione icone, smoke test
 ```
 
