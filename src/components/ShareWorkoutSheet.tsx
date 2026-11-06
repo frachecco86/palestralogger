@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { WorkoutDetail } from '../lib/types'
 import { toast } from '../lib/live'
 import {
@@ -21,6 +21,24 @@ interface ShareImage {
 
 type ShareImages = Partial<Record<ShareCardStyle, ShareImage>>
 
+interface BackgroundPhoto {
+  url: string
+  image: HTMLImageElement
+}
+
+function loadPhoto(file: File): Promise<BackgroundPhoto> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const image = new Image()
+    image.onload = () => resolve({ url, image })
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Immagine non leggibile'))
+    }
+    image.src = url
+  })
+}
+
 export function ShareWorkoutSheet({
   open,
   onClose,
@@ -32,10 +50,19 @@ export function ShareWorkoutSheet({
   workout: WorkoutDetail
   userName: string
 }) {
-  const [style, setStyle] = useState<ShareCardStyle>('completo')
+  const [style, setStyle] = useState<ShareCardStyle>('foto')
   const [images, setImages] = useState<ShareImages>({})
+  const [photo, setPhoto] = useState<BackgroundPhoto | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!photo) return
+    return () => {
+      URL.revokeObjectURL(photo.url)
+    }
+  }, [photo])
 
   useEffect(() => {
     if (!open) return
@@ -48,7 +75,13 @@ export function ShareWorkoutSheet({
     // una variante alla volta: un solo canvas in memoria anche sui telefoni più lenti
     const build = async () => {
       for (const variant of SHARE_CARD_STYLES) {
-        const canvas = renderWorkoutCard({ workout, userName, style: variant.id })
+        const canvas = renderWorkoutCard({
+          workout,
+          userName,
+          style: variant.id,
+          // la foto vale solo per lo stile «Con foto»
+          photo: variant.id === 'foto' ? photo?.image : null,
+        })
         const blob = await canvasToBlob(canvas)
         if (!alive) return
         const url = URL.createObjectURL(blob)
@@ -66,10 +99,24 @@ export function ShareWorkoutSheet({
       alive = false
       urls.forEach((url) => URL.revokeObjectURL(url))
     }
-  }, [open, workout, userName])
+  }, [open, workout, userName, photo])
 
   const current = images[style] ?? null
   const currentVariant = SHARE_CARD_STYLES.find((variant) => variant.id === style)
+
+  async function choosePhoto(file: File) {
+    if (!file.type.startsWith('image/')) {
+      toast('Il file scelto non è un’immagine', 'err')
+      return
+    }
+    try {
+      const next = await loadPhoto(file)
+      setPhoto(next)
+      setStyle('foto')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Foto non leggibile', 'err')
+    }
+  }
 
   async function handleShare() {
     if (!current) return
@@ -103,12 +150,13 @@ export function ShareWorkoutSheet({
     <Sheet open={open} onClose={onClose} title="Condividi l'allenamento">
       <div className="pb-6">
         <p className="text-[12px] leading-relaxed text-muted">
-          Scegli lo stile: l'immagine è verticale <span className="text-text">9:16</span>, pronta per
-          storie, chat e social.
+          Due versioni, verticali <span className="text-text">9:16</span>: con la tua foto come
+          sfondo (stile Strava) oppure solo con i dati. Nome, data, serie, esercizi e carichi sono
+          sempre inclusi.
         </p>
 
         {/* scelta stile con anteprima */}
-        <div className="mt-3 grid grid-cols-3 gap-2">
+        <div className="mt-3 grid grid-cols-2 gap-2">
           {SHARE_CARD_STYLES.map((variant) => {
             const active = variant.id === style
             const thumb = images[variant.id]
@@ -118,12 +166,13 @@ export function ShareWorkoutSheet({
                 type="button"
                 onClick={() => setStyle(variant.id)}
                 aria-pressed={active}
+                aria-label={`Stile ${variant.label}`}
                 className={cx(
-                  'press flex flex-col items-center gap-1.5 rounded-xl border p-1.5',
+                  'press flex items-center gap-2 rounded-xl border p-1.5 text-left',
                   active ? 'border-lime/60 bg-lime/10' : 'border-line bg-surface2/50',
                 )}
               >
-                <span className="block w-full overflow-hidden rounded-lg bg-ink" style={{ aspectRatio: '9 / 16' }}>
+                <span className="block w-12 shrink-0 overflow-hidden rounded-lg bg-ink" style={{ aspectRatio: '9 / 16' }}>
                   {thumb ? (
                     <img
                       src={thumb.url}
@@ -134,13 +183,22 @@ export function ShareWorkoutSheet({
                     <span className="block h-full w-full animate-pulse bg-surface3" />
                   )}
                 </span>
-                <span
-                  className={cx(
-                    'text-[11px] font-semibold leading-none',
-                    active ? 'text-lime' : 'text-muted',
-                  )}
-                >
-                  {variant.label}
+                <span className="min-w-0">
+                  <span
+                    className={cx(
+                      'block text-[12px] font-semibold leading-tight',
+                      active ? 'text-lime' : 'text-text',
+                    )}
+                  >
+                    {variant.label}
+                  </span>
+                  <span className="mt-0.5 block text-[10px] leading-snug text-faint">
+                    {variant.id === 'foto'
+                      ? photo
+                        ? 'Foto caricata'
+                        : 'Scegli una foto'
+                      : 'Nessuna immagine'}
+                  </span>
                 </span>
               </button>
             )
@@ -148,6 +206,30 @@ export function ShareWorkoutSheet({
         </div>
 
         <p className="mt-2 min-h-[16px] text-[11px] text-faint">{currentVariant?.hint}</p>
+
+        {style === 'foto' && (
+          <div className="mt-1 flex gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              full
+              onClick={() => photoInputRef.current?.click()}
+              ariaLabel="Scegli la foto di sfondo"
+            >
+              <Icon name="camera" size={15} /> {photo ? 'Cambia foto di sfondo' : 'Scegli foto di sfondo'}
+            </Button>
+            {photo && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setPhoto(null)}
+                ariaLabel="Rimuovi foto di sfondo"
+              >
+                <Icon name="trash" size={15} />
+              </Button>
+            )}
+          </div>
+        )}
 
         {/* anteprima grande */}
         <div className="mt-2 flex justify-center">
@@ -195,8 +277,21 @@ export function ShareWorkoutSheet({
 
         <p className="mt-3 flex items-start gap-1.5 text-[10.5px] leading-relaxed text-faint">
           <Icon name="lock" size={12} className="mt-0.5 shrink-0" />
-          L'immagine contiene solo questo allenamento: nessun dato di amici o di sync.
+          L'immagine contiene solo questo allenamento: nessun dato di amici o di sync. La foto di
+          sfondo resta sul telefono e non viene caricata altrove.
         </p>
+
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) void choosePhoto(file)
+            e.target.value = ''
+          }}
+        />
       </div>
     </Sheet>
   )

@@ -1,24 +1,38 @@
 import type { Muscle, WorkoutDetail } from './types'
 import { MUSCLE_COLORS } from './types'
-import { MONTHS, formatDateLong, parseISO } from './dates'
-import { epley, formatKg, formatWeight } from './format'
+import { formatDateLong } from './dates'
+import { formatKg, formatWeight } from './format'
 
 /**
  * Immagine condivisibile di un allenamento.
  * Formato verticale 9:16 (1080 × 1920): storie, WhatsApp, chat.
- * Tre stili: completo, essenziale, social (sticker).
+ *
+ * Due stili soli:
+ * - «Con foto»: una foto scelta dall'utente fa da sfondo (stile Strava);
+ * - «Solo dati»: sfondo scuro, nessuna immagine.
+ *
+ * Il contenuto è lo stesso: nome della persona, data, nome dell'allenamento,
+ * numero di serie, esercizi con il dettaglio dei carichi (es. «3 da 10 kg ·
+ * 2 da 40 kg») e, in fondo, il nome dell'app e il testo del footer.
  */
 
-export type ShareCardStyle = 'completo' | 'essenziale' | 'social'
+export type ShareCardStyle = 'foto' | 'dati'
 
 export const SHARE_CARD_STYLES: ReadonlyArray<{
   id: ShareCardStyle
   label: string
   hint: string
 }> = [
-  { id: 'completo', label: 'Completo', hint: 'Tutti gli esercizi, le serie e le note' },
-  { id: 'essenziale', label: 'Essenziale', hint: 'Solo titolo e numeri, tanto respiro' },
-  { id: 'social', label: 'Sticker', hint: 'Sticker colorati, top set e gruppi muscolari' },
+  {
+    id: 'foto',
+    label: 'Con foto',
+    hint: 'La tua foto come sfondo, in stile Strava: puoi caricarla qui sotto',
+  },
+  {
+    id: 'dati',
+    label: 'Solo dati',
+    hint: 'Sfondo scuro, nessuna immagine: allenamento, serie e carichi',
+  },
 ]
 
 export const SHARE_CARD_WIDTH = 1080
@@ -33,22 +47,21 @@ const FONT_STACK =
   "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
 
 const INK = '#0A0C09'
-const TEXT = '#F2F5EF'
-const MUTED = '#99A394'
-const FAINT = '#6B7566'
+const TEXT = '#F4F7F1'
+const MUTED = '#C2CCBA'
+const FAINT = '#8B9585'
 const LIME = '#C8FF3D'
-const LIME_DIM = '#9ECB2C'
-const MINT = '#7CFFB2'
-const RULE = 'rgba(51, 64, 42, 0.85)'
-const ROW_RULE = 'rgba(51, 64, 42, 0.6)'
-const CARD_FILL = '#151B12'
-const CARD_LINE = '#33402A'
+const RULE = 'rgba(255, 255, 255, 0.16)'
+const ROW_RULE = 'rgba(255, 255, 255, 0.10)'
 
-const FOOTER_RULE_Y = H - 168
-const FOOTER_BASELINE = H - 104
+const APP_NAME = 'PalestraLogger'
+const FOOTER_TEXT = 'CHECCO digital creaction 2026'
+
+const FOOTER_RULE_Y = H - 236
+const FOOTER_NAME_BASELINE = H - 158
+const FOOTER_TEXT_BASELINE = H - 100
 
 const font = (weight: number, size: number) => `${weight} ${size}px ${FONT_STACK}`
-const italicFont = (size: number) => `italic 400 ${size}px ${FONT_STACK}`
 
 // ---------- helper canvas ----------
 
@@ -132,91 +145,86 @@ function fitTitle(
   for (const size of sizes) {
     ctx.font = font(800, size)
     const wrapped = wrapWords(ctx, text, CONTENT)
-    if (wrapped.length <= maxLines && wrapped.every((line) => ctx.measureText(line).width <= CONTENT)) {
+    if (
+      wrapped.length <= maxLines &&
+      wrapped.every((line) => ctx.measureText(line).width <= CONTENT)
+    ) {
       return { size, lines: wrapped }
     }
   }
   const size = sizes[sizes.length - 1]
   ctx.font = font(800, size)
-  const all = wrapWords(ctx, text, CONTENT)
-  const lines = all.slice(0, maxLines).map((line) => truncate(ctx, line, CONTENT))
-  if (all.length > maxLines) {
-    const last = lines[maxLines - 1].replace(/…$/, '')
-    lines[maxLines - 1] = truncate(ctx, `${last}…`, CONTENT)
+  const wrapped = wrapWords(ctx, text, CONTENT).slice(0, maxLines)
+  return { size, lines: wrapped.map((line) => truncate(ctx, line, CONTENT)) }
+}
+
+function sourceSize(source: CanvasImageSource): { width: number; height: number } {
+  const value = source as unknown as {
+    width?: number
+    height?: number
+    naturalWidth?: number
+    naturalHeight?: number
+    videoWidth?: number
+    videoHeight?: number
   }
-  return { size, lines }
+  return {
+    width: value.naturalWidth || value.videoWidth || value.width || 0,
+    height: value.naturalHeight || value.videoHeight || value.height || 0,
+  }
 }
 
-function withRotation(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  degrees: number,
-  draw: () => void,
-): void {
-  ctx.save()
-  ctx.translate(cx, cy)
-  ctx.rotate((degrees * Math.PI) / 180)
-  draw()
-  ctx.restore()
+/** Disegna la foto riempiendo il formato 9:16 (ritaglio centrale). */
+function drawCover(ctx: CanvasRenderingContext2D, photo: CanvasImageSource): void {
+  const { width, height } = sourceSize(photo)
+  if (!width || !height) return
+  const scale = Math.max(W / width, H / height)
+  const drawW = width * scale
+  const drawH = height * scale
+  ctx.drawImage(photo, (W - drawW) / 2, (H - drawH) / 2, drawW, drawH)
 }
 
-function drawDumbbell(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+function drawMark(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
   ctx.save()
-  ctx.translate(x, y)
-  ctx.scale(size / 24, size / 24)
-  ctx.beginPath()
-  ctx.moveTo(6.5, 8)
-  ctx.lineTo(6.5, 16)
-  ctx.moveTo(3.5, 10)
-  ctx.lineTo(3.5, 14)
-  ctx.moveTo(17.5, 8)
-  ctx.lineTo(17.5, 16)
-  ctx.moveTo(20.5, 10)
-  ctx.lineTo(20.5, 14)
-  ctx.moveTo(6.5, 12)
-  ctx.lineTo(17.5, 12)
-  ctx.lineWidth = 2.2
-  ctx.lineCap = 'round'
+  ctx.fillStyle = LIME
+  roundRect(ctx, x, y, size, size, size * 0.28)
+  ctx.fill()
   ctx.strokeStyle = INK
+  ctx.lineWidth = Math.max(2, size * 0.075)
+  ctx.lineCap = 'round'
+  const cx = x + size / 2
+  const cy = y + size / 2
+  const bar = size * 0.24
+  const arm = size * 0.16
+  ctx.beginPath()
+  ctx.moveTo(cx - bar, cy - arm)
+  ctx.lineTo(cx - bar, cy + arm)
+  ctx.moveTo(cx - bar - size * 0.1, cy - arm * 0.55)
+  ctx.lineTo(cx - bar - size * 0.1, cy + arm * 0.55)
+  ctx.moveTo(cx + bar, cy - arm)
+  ctx.lineTo(cx + bar, cy + arm)
+  ctx.moveTo(cx + bar + size * 0.1, cy - arm * 0.55)
+  ctx.lineTo(cx + bar + size * 0.1, cy + arm * 0.55)
+  ctx.moveTo(cx - bar, cy)
+  ctx.lineTo(cx + bar, cy)
   ctx.stroke()
   ctx.restore()
 }
 
-function drawMark(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
-  ctx.fillStyle = LIME
-  roundRect(ctx, x, y, size, size, size * 0.28)
-  ctx.fill()
-  drawDumbbell(ctx, x + size * 0.07, y + size * 0.07, size * 0.86)
-}
-
-function drawBrand(ctx: CanvasRenderingContext2D, markSize: number, top: number): void {
-  drawMark(ctx, MARGIN, top, markSize)
-  ctx.font = font(700, Math.round(markSize * 0.485))
-  ctx.fillStyle = TEXT
-  spacedText(
-    ctx,
-    'PALESTRALOGGER',
-    MARGIN + markSize + Math.round(markSize * 0.4),
-    top + Math.round(markSize * 0.7),
-    Math.max(3, Math.round(markSize * 0.08)),
-  )
-}
-
-function shortDateUpper(iso: string): string {
-  const d = parseISO(iso)
-  return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3).toUpperCase()}`
-}
-
 // ---------- dati per la card ----------
+
+interface SetGroup {
+  /** numero di serie con questo carico */
+  count: number
+  weight: number
+  reps: number[]
+}
 
 interface CardExercise {
   name: string
   muscle: Muscle
   color: string
   sets: number
-  reps: number[]
-  topWeight: number
+  groups: SetGroup[]
   volume: number
 }
 
@@ -224,25 +232,38 @@ interface CardData {
   workout: WorkoutDetail
   userName: string
   title: string
+  dateLabel: string
   exercises: CardExercise[]
-  muscles: Muscle[]
   totalSets: number
-  totalReps: number
   volume: number
-  note: string
-}
-
-interface TopSet {
-  exercise: string
-  weight: number
-  reps: number
-  e1rm: number
 }
 
 export interface ShareCardInput {
   workout: WorkoutDetail
   userName: string
   style?: ShareCardStyle
+  /** Foto di sfondo (già caricata): usata solo dallo stile «foto». */
+  photo?: CanvasImageSource | null
+}
+
+function startCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+function buildGroups(sets: Array<{ reps: number; weight: number }>): SetGroup[] {
+  const map = new Map<string, SetGroup>()
+  for (const set of sets) {
+    const key = set.weight.toFixed(1)
+    const group = map.get(key)
+    if (group) {
+      group.count += 1
+      group.reps.push(set.reps)
+    } else {
+      map.set(key, { count: 1, weight: set.weight, reps: [set.reps] })
+    }
+  }
+  // carichi più alti per primi: è quello che interessa di più
+  return [...map.values()].sort((a, b) => b.weight - a.weight)
 }
 
 function buildExercises(workout: WorkoutDetail): CardExercise[] {
@@ -253,36 +274,26 @@ function buildExercises(workout: WorkoutDetail): CardExercise[] {
       muscle: entry.exercise.muscle,
       color: MUSCLE_COLORS[entry.exercise.muscle] ?? MUTED,
       sets: sets.length,
-      reps: sets.map((s) => s.reps),
-      topWeight: sets.reduce((max, s) => Math.max(max, s.weight), 0),
+      groups: buildGroups(sets),
       volume: sets.reduce((sum, s) => sum + s.reps * s.weight, 0),
     }
   })
 }
 
-function setsSummary(exercise: CardExercise): string {
-  const reps = exercise.reps
-  const uniform = reps.every((r) => r === reps[0])
-  const repsLabel = uniform ? `${exercise.sets}×${reps[0] ?? 0}` : `${exercise.sets}×${reps.join('/')}`
-  return exercise.topWeight > 0 ? `${repsLabel} · ${formatWeight(exercise.topWeight)} kg` : repsLabel
-}
-
-function findTopSet(workout: WorkoutDetail): TopSet | null {
-  let best: TopSet | null = null
-  let mostReps: TopSet | null = null
-  for (const entry of workout.entries) {
-    for (const set of entry.sets) {
-      const candidate: TopSet = {
-        exercise: entry.exercise.name,
-        weight: set.weight,
-        reps: set.reps,
-        e1rm: set.weight > 0 ? epley(set.weight, set.reps) : 0,
-      }
-      if (!best || candidate.e1rm > best.e1rm) best = candidate
-      if (!mostReps || set.reps > mostReps.reps) mostReps = candidate
-    }
-  }
-  return best && best.e1rm > 0 ? best : mostReps
+/**
+ * Riepilogo dei carichi di un esercizio, es. «3 da 10 kg · 2 da 40 kg».
+ * Per gli esercizi a corpo libero mostra le ripetizioni: «3 × 12».
+ */
+function setsDetail(exercise: CardExercise): string {
+  if (exercise.groups.length === 0) return 'nessuna serie'
+  return exercise.groups
+    .map((group) => {
+      if (group.weight > 0) return `${group.count} da ${formatWeight(group.weight)} kg`
+      const uniform = group.reps.every((reps) => reps === group.reps[0])
+      const reps = uniform ? `${group.reps[0]}` : group.reps.join('/')
+      return `${group.count} × ${reps} rip`
+    })
+    .join(' · ')
 }
 
 function prepare(input: ShareCardInput): CardData {
@@ -294,808 +305,228 @@ function prepare(input: ShareCardInput): CardData {
   }
   return {
     workout,
-    userName,
+    userName: userName.trim() || 'Atleta',
     title: workout.name.trim() || muscles.slice(0, 3).join(' · ') || 'Allenamento',
+    dateLabel: startCase(formatDateLong(workout.date)).toUpperCase(),
     exercises,
-    muscles,
     totalSets: exercises.reduce((sum, e) => sum + e.sets, 0),
-    totalReps: exercises.reduce((sum, e) => sum + e.reps.reduce((a, b) => a + b, 0), 0),
     volume: exercises.reduce((sum, e) => sum + e.volume, 0),
-    note: workout.notes.trim(),
   }
 }
 
 // ---------- sfondi ----------
 
-const SOCIAL_DECOR: Array<{
-  x: number
-  y: number
-  r: number
-  color: string
-  ring: boolean
-}> = [
-  { x: W - 34, y: 430, r: 7, color: MINT, ring: true },
-  { x: W - 44, y: 1600, r: 5, color: LIME, ring: true },
-  { x: 40, y: 1690, r: 4, color: LIME, ring: false },
-]
-
-function drawPlus(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  size: number,
-  color: string,
-): void {
-  ctx.strokeStyle = color
-  ctx.lineWidth = 3
-  ctx.lineCap = 'round'
-  ctx.beginPath()
-  ctx.moveTo(x - size, y)
-  ctx.lineTo(x + size, y)
-  ctx.moveTo(x, y - size)
-  ctx.lineTo(x, y + size)
-  ctx.stroke()
-}
-
-function drawBackground(ctx: CanvasRenderingContext2D, style: ShareCardStyle): void {
+function drawPhotoBackground(ctx: CanvasRenderingContext2D, photo: CanvasImageSource): void {
   ctx.fillStyle = INK
   ctx.fillRect(0, 0, W, H)
+  drawCover(ctx, photo)
 
-  if (style === 'essenziale') {
-    const glow = ctx.createRadialGradient(W / 2, -140, 0, W / 2, -140, H * 0.85)
-    glow.addColorStop(0, 'rgba(200, 255, 61, 0.17)')
-    glow.addColorStop(0.5, 'rgba(200, 255, 61, 0.04)')
-    glow.addColorStop(1, 'rgba(200, 255, 61, 0)')
-    ctx.fillStyle = glow
-    ctx.fillRect(0, 0, W, H)
+  // scurisce l'alto (testo leggibile) e molto il basso (dati e footer)
+  const top = ctx.createLinearGradient(0, 0, 0, H * 0.45)
+  top.addColorStop(0, 'rgba(6, 8, 5, 0.72)')
+  top.addColorStop(1, 'rgba(6, 8, 5, 0)')
+  ctx.fillStyle = top
+  ctx.fillRect(0, 0, W, H * 0.45)
 
-    const mint = ctx.createRadialGradient(W, H, 0, W, H, H * 0.62)
-    mint.addColorStop(0, 'rgba(124, 255, 178, 0.09)')
-    mint.addColorStop(1, 'rgba(124, 255, 178, 0)')
-    ctx.fillStyle = mint
-    ctx.fillRect(0, 0, W, H)
-    return
-  }
+  const bottom = ctx.createLinearGradient(0, H * 0.28, 0, H)
+  bottom.addColorStop(0, 'rgba(6, 8, 5, 0)')
+  bottom.addColorStop(0.42, 'rgba(6, 8, 5, 0.56)')
+  bottom.addColorStop(1, 'rgba(6, 8, 5, 0.88)')
+  ctx.fillStyle = bottom
+  ctx.fillRect(0, H * 0.28, W, H * 0.72)
+}
 
-  if (style === 'social') {
-    const glow = ctx.createRadialGradient(W * 0.95, -40, 0, W * 0.95, -40, H * 0.7)
-    glow.addColorStop(0, 'rgba(200, 255, 61, 0.2)')
-    glow.addColorStop(0.45, 'rgba(200, 255, 61, 0.06)')
-    glow.addColorStop(1, 'rgba(200, 255, 61, 0)')
-    ctx.fillStyle = glow
-    ctx.fillRect(0, 0, W, H)
+function drawPlainBackground(ctx: CanvasRenderingContext2D): void {
+  const base = ctx.createLinearGradient(0, 0, W * 0.4, H)
+  base.addColorStop(0, '#11160E')
+  base.addColorStop(0.55, INK)
+  base.addColorStop(1, '#0C100A')
+  ctx.fillStyle = base
+  ctx.fillRect(0, 0, W, H)
 
-    const mint = ctx.createRadialGradient(-80, H + 40, 0, -80, H + 40, H * 0.6)
-    mint.addColorStop(0, 'rgba(124, 255, 178, 0.13)')
-    mint.addColorStop(1, 'rgba(124, 255, 178, 0)')
-    ctx.fillStyle = mint
-    ctx.fillRect(0, 0, W, H)
-
-    for (const item of SOCIAL_DECOR) {
-      if (item.ring) {
-        ctx.strokeStyle = item.color
-        ctx.lineWidth = 3
-        ctx.beginPath()
-        ctx.arc(item.x, item.y, item.r + 6, 0, Math.PI * 2)
-        ctx.stroke()
-      } else {
-        ctx.fillStyle = item.color
-        ctx.beginPath()
-        ctx.arc(item.x, item.y, item.r, 0, Math.PI * 2)
-        ctx.fill()
-      }
-    }
-    drawPlus(ctx, W - 42, 700, 11, 'rgba(200, 255, 61, 0.5)')
-    return
-  }
-
-  const glow = ctx.createRadialGradient(W * 0.95, -40, 0, W * 0.95, -40, H * 0.72)
-  glow.addColorStop(0, 'rgba(200, 255, 61, 0.22)')
-  glow.addColorStop(0.45, 'rgba(200, 255, 61, 0.07)')
+  const glow = ctx.createRadialGradient(W * 0.82, -80, 0, W * 0.82, -80, 760)
+  glow.addColorStop(0, 'rgba(200, 255, 61, 0.16)')
   glow.addColorStop(1, 'rgba(200, 255, 61, 0)')
   ctx.fillStyle = glow
   ctx.fillRect(0, 0, W, H)
 
-  const mint = ctx.createRadialGradient(-60, H + 60, 0, -60, H + 60, H * 0.6)
-  mint.addColorStop(0, 'rgba(124, 255, 178, 0.12)')
+  const mint = ctx.createRadialGradient(W * 0.1, H * 0.72, 0, W * 0.1, H * 0.72, 620)
+  mint.addColorStop(0, 'rgba(124, 255, 178, 0.07)')
   mint.addColorStop(1, 'rgba(124, 255, 178, 0)')
   ctx.fillStyle = mint
   ctx.fillRect(0, 0, W, H)
+}
 
-  ctx.strokeStyle = 'rgba(200, 255, 61, 0.10)'
-  ctx.lineWidth = 2
-  for (const radius of [520, 380]) {
-    ctx.beginPath()
-    ctx.arc(W + 70, -50, radius, 0, Math.PI * 2)
-    ctx.stroke()
+// ---------- disegno del contenuto ----------
+
+function drawHeader(ctx: CanvasRenderingContext2D, data: CardData): number {
+  let y = 132
+
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = TEXT
+  ctx.font = font(700, 58)
+  ctx.fillText(truncate(ctx, data.userName, CONTENT), MARGIN, y + 58)
+
+  y += 104
+  ctx.fillStyle = MUTED
+  ctx.font = font(600, 32)
+  spacedText(ctx, truncate(ctx, data.dateLabel, CONTENT), MARGIN, y, 3)
+
+  return y + 74
+}
+
+function drawTitle(ctx: CanvasRenderingContext2D, data: CardData, y: number): number {
+  const fitted = fitTitle(ctx, data.title, 2, [96, 84, 72, 60])
+  ctx.fillStyle = TEXT
+  ctx.font = font(800, fitted.size)
+  ctx.textAlign = 'left'
+  const lineHeight = Math.round(fitted.size * 1.06)
+  let baseline = y + fitted.size
+  for (const line of fitted.lines) {
+    ctx.fillText(line, MARGIN, baseline)
+    baseline += lineHeight
   }
+  const lastBaseline = baseline - lineHeight
+  // spazio sotto l'ultima riga: i numeri non devono toccare il titolo
+  return lastBaseline + Math.round(fitted.size * 0.34) + 46
 }
 
-// ---------- parti comuni ----------
+function drawMeta(ctx: CanvasRenderingContext2D, data: CardData, y: number): number {
+  ctx.fillStyle = LIME
+  ctx.font = font(700, 36)
+  ctx.textAlign = 'left'
 
-interface MuscleSegment {
-  muscle: Muscle
-  sets: number
+  const pieces: Array<{ text: string; color: string }> = [
+    { text: `${data.totalSets} serie`, color: LIME },
+    {
+      text: `${data.exercises.length} ${data.exercises.length === 1 ? 'esercizio' : 'esercizi'}`,
+      color: MUTED,
+    },
+  ]
+  if (data.volume > 0) pieces.push({ text: formatKg(data.volume), color: MUTED })
+
+  let cursor = MARGIN
+  pieces.forEach((piece, index) => {
+    if (index > 0) {
+      ctx.fillStyle = FAINT
+      ctx.font = font(600, 36)
+      ctx.fillText('·', cursor, y)
+      cursor += ctx.measureText('·').width + 22
+    }
+    ctx.fillStyle = piece.color
+    ctx.font = font(700, 36)
+    ctx.fillText(piece.text, cursor, y)
+    cursor += ctx.measureText(piece.text).width + 22
+  })
+
+  return y + 46
 }
 
-function muscleSegments(data: CardData): MuscleSegment[] {
-  return data.muscles.map((muscle) => ({
-    muscle,
-    sets: data.workout.entries
-      .filter((entry) => entry.exercise.muscle === muscle)
-      .reduce((sum, entry) => sum + entry.sets.length, 0),
-  }))
+function exerciseRowHeight(ctx: CanvasRenderingContext2D, exercise: CardExercise): number {
+  const detail = setsDetail(exercise)
+  ctx.font = font(600, 32)
+  const detailLines = wrapWords(ctx, detail, CONTENT - 190).slice(0, 2)
+  return 96 + detailLines.length * 44
 }
 
-function drawMuscleBar(
+function drawExerciseRow(
   ctx: CanvasRenderingContext2D,
-  data: CardData,
-  x: number,
+  exercise: CardExercise,
   y: number,
-  width: number,
-  height: number,
-  gap = 5,
-): void {
-  const segments = muscleSegments(data)
-  if (segments.length === 0) return
-  const usable = width - gap * (segments.length - 1)
-  let cursor = x
-  for (const segment of segments) {
-    const segmentWidth = Math.max(8, (segment.sets / Math.max(1, data.totalSets)) * usable)
-    ctx.fillStyle = MUSCLE_COLORS[segment.muscle] ?? MUTED
-    roundRect(ctx, cursor, y, Math.max(8, segmentWidth - gap), height, height / 2)
-    ctx.fill()
-    cursor += segmentWidth
-  }
-}
-
-function drawFooter(ctx: CanvasRenderingContext2D, data: CardData): void {
-  ctx.strokeStyle = RULE
-  ctx.lineWidth = 2
-  ctx.beginPath()
-  ctx.moveTo(MARGIN, FOOTER_RULE_Y)
-  ctx.lineTo(W - MARGIN, FOOTER_RULE_Y)
-  ctx.stroke()
-
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'alphabetic'
-  ctx.font = font(700, 30)
-  ctx.fillStyle = TEXT
-  ctx.fillText(
-    truncate(ctx, data.userName.trim() || 'Il tuo diario', CONTENT - 430),
-    MARGIN,
-    FOOTER_BASELINE,
-  )
-
-  ctx.font = font(500, 24)
-  ctx.fillStyle = FAINT
-  ctx.textAlign = 'right'
-  ctx.fillText('palestralogger.netlify.app', W - MARGIN, FOOTER_BASELINE)
-  ctx.textAlign = 'left'
-
-  ctx.fillStyle = LIME
-  ctx.beginPath()
-  ctx.arc(MARGIN, FOOTER_BASELINE + 34, 4, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.font = font(500, 20)
-  ctx.fillStyle = FAINT
-  spacedText(ctx, 'DIARIO ALLENAMENTI · OFFLINE', MARGIN + 22, FOOTER_BASELINE + 41, 2.6)
-}
-
-function drawExerciseRows(
-  ctx: CanvasRenderingContext2D,
-  data: CardData,
-  listTop: number,
-  listBottom: number,
-  options: {
-    rowHeight: number
-    nameSize: number
-    summarySize: number
-    dotRadius: number
-    align?: 'center' | 'top'
-  },
+  first: boolean,
 ): number {
-  const { rowHeight, nameSize, summarySize, dotRadius } = options
-  const available = Math.max(rowHeight, listBottom - listTop)
-  const maxRows = Math.max(1, Math.floor(available / rowHeight))
-  let shown = data.exercises
-  let hidden = 0
-  if (maxRows >= 2 && data.exercises.length > maxRows) {
-    shown = data.exercises.slice(0, maxRows - 1)
-    hidden = data.exercises.length - shown.length
-  } else if (maxRows === 1) {
-    shown = data.exercises.slice(0, 1)
+  if (!first) {
+    ctx.fillStyle = ROW_RULE
+    ctx.fillRect(MARGIN, y, CONTENT, 2)
   }
 
-  const rows = shown.length + (hidden > 0 ? 1 : 0)
-  const listStart =
-    options.align === 'top'
-      ? listTop
-      : listTop + Math.max(0, Math.round((available - rows * rowHeight) / 2))
-
-  shown.forEach((exercise, index) => {
-    const rowTop = listStart + index * rowHeight
-    const baseline = rowTop + rowHeight / 2 + Math.round(nameSize * 0.32)
-    const summary = setsSummary(exercise)
-
-    ctx.font = font(600, summarySize)
-    const summaryWidth = ctx.measureText(summary).width
-    ctx.fillStyle = MUTED
-    ctx.textAlign = 'right'
-    ctx.fillText(summary, W - MARGIN, baseline)
-    ctx.textAlign = 'left'
-
-    ctx.font = font(700, nameSize)
-    ctx.fillStyle = TEXT
-    ctx.fillText(
-      truncate(ctx, exercise.name, CONTENT - summaryWidth - dotRadius * 2 - 66),
-      MARGIN + dotRadius * 2 + 24,
-      baseline,
-    )
-
-    ctx.fillStyle = exercise.color
-    ctx.beginPath()
-    ctx.arc(MARGIN + dotRadius, rowTop + rowHeight / 2, dotRadius, 0, Math.PI * 2)
-    ctx.fill()
-
-    if (index < shown.length - 1 || hidden > 0) {
-      ctx.strokeStyle = ROW_RULE
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.moveTo(MARGIN + dotRadius * 2 + 24, rowTop + rowHeight)
-      ctx.lineTo(W - MARGIN, rowTop + rowHeight)
-      ctx.stroke()
-    }
-  })
-
-  if (hidden > 0) {
-    const rowTop = listStart + shown.length * rowHeight
-    ctx.font = font(600, summarySize)
-    ctx.fillStyle = LIME
-    ctx.fillText(
-      `+ ${hidden} ${hidden === 1 ? 'altro esercizio' : 'altri esercizi'}`,
-      MARGIN + dotRadius * 2 + 24,
-      rowTop + rowHeight / 2 + Math.round(summarySize * 0.34),
-    )
-  }
-
-  return listStart + rows * rowHeight
-}
-
-// ---------- stile "completo" ----------
-
-function drawCompleto(ctx: CanvasRenderingContext2D, data: CardData): void {
-  drawBrand(ctx, 56, 92)
-
-  ctx.font = font(600, 29)
-  ctx.fillStyle = MUTED
-  spacedText(ctx, formatDateLong(data.workout.date).toUpperCase(), MARGIN, 244, 2.4)
-
-  const title = fitTitle(ctx, data.title, 2, [104, 96, 88, 80, 74, 68, 62, 56])
-  const titleBaseline = 372
-  const lineHeight = Math.round(title.size * 1.06)
-  ctx.font = font(800, title.size)
-  ctx.fillStyle = TEXT
-  title.lines.forEach((line, index) => {
-    ctx.fillText(line, MARGIN, titleBaseline + index * lineHeight)
-  })
-
-  let y = titleBaseline + (title.lines.length - 1) * lineHeight
-
-  const hasVolume = data.volume > 0
-  const bigValue = hasVolume ? formatKg(data.volume) : String(data.totalReps)
-  const [amount, unit] = bigValue.split(' ')
-
-  y += 126
-  ctx.font = font(600, 26)
-  ctx.fillStyle = FAINT
-  spacedText(ctx, hasVolume ? 'VOLUME TOTALE' : 'RIPETIZIONI TOTALI', MARGIN, y, 4.2)
-
-  y += 172
-  ctx.font = font(800, 172)
-  ctx.fillStyle = LIME
-  ctx.fillText(amount, MARGIN - 5, y)
-  const amountWidth = ctx.measureText(amount).width
-  if (unit) {
-    ctx.font = font(700, 52)
-    ctx.fillStyle = LIME_DIM
-    ctx.fillText(unit, MARGIN - 5 + amountWidth + 18, y)
-  }
-
-  y += 60
-  ctx.strokeStyle = RULE
-  ctx.lineWidth = 2
+  ctx.textAlign = 'left'
+  ctx.fillStyle = exercise.color
   ctx.beginPath()
-  ctx.moveTo(MARGIN, y)
-  ctx.lineTo(W - MARGIN, y)
-  ctx.stroke()
-
-  y += 76
-  const stats = [
-    {
-      value: String(data.exercises.length),
-      label: data.exercises.length === 1 ? 'ESERCIZIO' : 'ESERCIZI',
-    },
-    { value: String(data.totalSets), label: 'SERIE' },
-    { value: String(data.totalReps), label: 'RIPETIZIONI' },
-  ]
-  const columnWidth = CONTENT / 3
-  stats.forEach((stat, index) => {
-    const x = MARGIN + columnWidth * index
-    ctx.font = font(700, 54)
-    ctx.fillStyle = TEXT
-    ctx.fillText(stat.value, x, y)
-    ctx.font = font(600, 21)
-    ctx.fillStyle = FAINT
-    spacedText(ctx, stat.label, x, y + 42, 3)
-  })
-
-  y += 108
-  if (data.muscles.length > 0) {
-    drawMuscleBar(ctx, data, MARGIN, y, CONTENT, 14)
-
-    const segments = muscleSegments(data)
-    let legendX = MARGIN
-    let legendY = y + 62
-    ctx.font = font(600, 24)
-    for (const segment of segments) {
-      const label = segment.muscle
-      const itemWidth = 24 + ctx.measureText(label).width
-      if (legendX + itemWidth > W - MARGIN && legendX > MARGIN) {
-        legendX = MARGIN
-        legendY += 38
-      }
-      ctx.fillStyle = MUSCLE_COLORS[segment.muscle] ?? MUTED
-      ctx.beginPath()
-      ctx.arc(legendX + 7, legendY - 8, 7, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.fillStyle = MUTED
-      ctx.fillText(label, legendX + 22, legendY)
-      legendX += itemWidth + 32
-    }
-    y = legendY + 16
-  }
-
-  let noteLines: string[] = []
-  if (data.note) {
-    ctx.font = italicFont(27)
-    const wrapped = wrapWords(ctx, data.note, CONTENT)
-    noteLines = wrapped.slice(0, 2)
-    if (noteLines.length > 0) {
-      noteLines[0] = `“${noteLines[0]}`
-      const last = noteLines.length - 1
-      const suffix = wrapped.length > 2 ? '…' : ''
-      noteLines[last] = `${truncate(ctx, `${noteLines[last]}${suffix}`, CONTENT - 24)}”`
-    }
-  }
-
-  const notesHeight = noteLines.length > 0 ? noteLines.length * 36 + 28 : 0
-
-  const listTop = y + 26
-  const listBottom = FOOTER_RULE_Y - 36 - notesHeight
-  const listSpace = Math.max(76, listBottom - listTop)
-  const rowHeight = Math.max(
-    76,
-    Math.min(96, Math.floor(listSpace / Math.max(1, data.exercises.length))),
-  )
-  drawExerciseRows(ctx, data, listTop, listBottom, {
-    rowHeight,
-    nameSize: rowHeight >= 88 ? 36 : 33,
-    summarySize: rowHeight >= 88 ? 30 : 28,
-    dotRadius: rowHeight >= 88 ? 9 : 8,
-  })
-
-  if (noteLines.length > 0) {
-    ctx.font = italicFont(27)
-    ctx.fillStyle = FAINT
-    const firstBaseline = FOOTER_RULE_Y - 34 - (noteLines.length - 1) * 36
-    noteLines.forEach((line, index) => {
-      ctx.fillText(line, MARGIN, firstBaseline + index * 36)
-    })
-  }
-
-  drawFooter(ctx, data)
-}
-
-// ---------- stile "essenziale" ----------
-
-function drawEssenziale(ctx: CanvasRenderingContext2D, data: CardData): void {
-  drawBrand(ctx, 44, 96)
-
-  const hasVolume = data.volume > 0
-  const bigValue = hasVolume ? formatKg(data.volume) : String(data.totalReps)
-  const [amount, unit] = bigValue.split(' ')
-
-  const title = fitTitle(ctx, data.title, 3, [150, 138, 126, 114, 100, 88])
-  const lineHeight = Math.round(title.size * 1.04)
-  const titleHeight = title.lines.length * lineHeight
-
-  let bigSize = 250
-  let amountWidth = 0
-  let unitWidth = 0
-  let unitSize = Math.round(bigSize * 0.28)
-  for (const candidate of [250, 230, 210, 190, 165, 140]) {
-    bigSize = candidate
-    unitSize = Math.round(candidate * 0.28)
-    ctx.font = font(800, candidate)
-    const aw = ctx.measureText(amount).width
-    ctx.font = font(700, unitSize)
-    const uw = unit ? ctx.measureText(unit).width : 0
-    amountWidth = aw
-    unitWidth = uw
-    if (aw + (unit ? 22 + uw : 0) <= CONTENT) break
-  }
-  const bigHeight = Math.round(bigSize * 0.86)
-
-  const dateHeight = 34
-  const ruleHeight = 6
-  const labelHeight = 32
-  const statsHeight = 36
-  const baseGaps = [56, 46, 56, 18, 46]
-  const baseGapTotal = baseGaps.reduce((sum, gap) => sum + gap, 0)
-  const contentHeight =
-    dateHeight + titleHeight + ruleHeight + labelHeight + bigHeight + statsHeight
-  const areaTop = 260
-  const areaBottom = FOOTER_RULE_Y - 90
-  const available = areaBottom - areaTop
-  const spread = Math.max(0, Math.min(available - contentHeight - baseGapTotal, 360))
-  const extraGap = spread / baseGaps.length
-  const gap = (index: number) => baseGaps[index] + extraGap
-  const blockHeight = contentHeight + baseGapTotal + spread
-  let y = areaTop + Math.max(0, Math.round((available - blockHeight) / 2))
-
-  const centerX = W / 2
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'top'
-
-  ctx.font = font(600, 27)
-  ctx.fillStyle = MUTED
-  spacedText(ctx, formatDateLong(data.workout.date).toUpperCase(), centerX, y, 4, 'center')
-  y += dateHeight + gap(0)
-
-  ctx.font = font(800, title.size)
-  ctx.fillStyle = TEXT
-  title.lines.forEach((line, index) => {
-    ctx.fillText(line, centerX, y + index * lineHeight)
-  })
-  y += titleHeight + gap(1)
-
-  ctx.fillStyle = LIME
-  roundRect(ctx, centerX - 70, y, 140, ruleHeight, 3)
+  ctx.arc(MARGIN + 9, y + 42, 9, 0, Math.PI * 2)
   ctx.fill()
-  y += ruleHeight + gap(2)
 
-  ctx.font = font(600, 26)
-  ctx.fillStyle = FAINT
-  spacedText(ctx, hasVolume ? 'VOLUME TOTALE' : 'RIPETIZIONI TOTALI', centerX, y, 5, 'center')
-  y += labelHeight + gap(3)
-
-  const baseline = y + bigHeight
-  const totalWidth = amountWidth + (unit ? 22 + unitWidth : 0)
-  const startX = centerX - totalWidth / 2
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'alphabetic'
-  ctx.font = font(800, bigSize)
-  ctx.fillStyle = LIME
-  ctx.fillText(amount, startX, baseline)
-  if (unit) {
-    ctx.font = font(700, unitSize)
-    ctx.fillStyle = LIME_DIM
-    ctx.fillText(unit, startX + amountWidth + 22, baseline)
-  }
-  y += bigHeight + gap(4)
-
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'top'
-  ctx.font = font(600, 29)
-  ctx.fillStyle = MUTED
-  const exerciseLabel =
-    data.exercises.length === 1 ? '1 esercizio' : `${data.exercises.length} esercizi`
-  spacedText(
-    ctx,
-    `${exerciseLabel} · ${data.totalSets} serie · ${data.totalReps} rip`.toUpperCase(),
-    centerX,
-    y,
-    3,
-    'center',
-  )
-
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'alphabetic'
-  if (data.muscles.length > 0) {
-    drawMuscleBar(ctx, data, MARGIN, FOOTER_RULE_Y - 56, CONTENT, 8, 4)
-  }
-  drawFooter(ctx, data)
-}
-
-// ---------- stile "social" ----------
-
-function drawSocial(ctx: CanvasRenderingContext2D, data: CardData): void {
-  drawBrand(ctx, 52, 92)
-
-  // sticker con la data
-  const dateLabel = shortDateUpper(data.workout.date)
-  let dateFontSize = 34
-  ctx.font = font(800, dateFontSize)
-  let dateWidth = ctx.measureText(dateLabel).width + 66
-  if (dateWidth > 270) {
-    dateFontSize = 28
-    ctx.font = font(800, dateFontSize)
-    dateWidth = ctx.measureText(dateLabel).width + 56
-  }
-  const dateHeight = 76
-  withRotation(ctx, W - MARGIN - dateWidth / 2, 126, -7, () => {
-    ctx.fillStyle = LIME
-    roundRect(ctx, -dateWidth / 2, -dateHeight / 2, dateWidth, dateHeight, 24)
-    ctx.fill()
-    ctx.fillStyle = INK
-    ctx.font = font(800, dateFontSize)
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(dateLabel, 0, 2)
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'alphabetic'
-  })
-
-  // titolo
-  const title = fitTitle(ctx, data.title, 3, [102, 94, 86, 78, 72, 66, 60])
-  const titleBaseline = 320
-  const lineHeight = Math.round(title.size * 1.04)
-  ctx.font = font(800, title.size)
   ctx.fillStyle = TEXT
-  title.lines.forEach((line, index) => {
-    ctx.fillText(line, MARGIN, titleBaseline + index * lineHeight)
-  })
-  let y = titleBaseline + (title.lines.length - 1) * lineHeight
+  ctx.font = font(700, 42)
+  ctx.fillText(truncate(ctx, exercise.name, CONTENT - 190), MARGIN + 36, y + 56)
 
-  // etichetta + sticker volume
-  const hasVolume = data.volume > 0
-  const bigValue = hasVolume ? formatKg(data.volume) : String(data.totalReps)
-  const [amount, unit] = bigValue.split(' ')
+  ctx.textAlign = 'right'
+  ctx.fillStyle = MUTED
+  ctx.font = font(600, 30)
+  ctx.fillText(`${exercise.sets} serie`, W - MARGIN, y + 56)
+  ctx.textAlign = 'left'
 
-  y += 72
-  ctx.font = font(600, 24)
-  ctx.fillStyle = FAINT
-  spacedText(ctx, hasVolume ? 'VOLUME TOTALE' : 'RIPETIZIONI TOTALI', MARGIN, y, 4.4)
-  y += 30
-
-  let valueSize = 66
-  let amountWidth = 0
-  let unitWidth = 0
-  let unitSize = 28
-  for (const candidate of [96, 88, 80, 72, 66]) {
-    const candidateUnit = Math.round(candidate * 0.42)
-    ctx.font = font(800, candidate)
-    const aw = ctx.measureText(amount).width
-    ctx.font = font(700, candidateUnit)
-    const uw = unit ? ctx.measureText(unit).width : 0
-    valueSize = candidate
-    amountWidth = aw
-    unitWidth = uw
-    unitSize = candidateUnit
-    if (aw + (unit ? 20 + uw : 0) + 96 <= CONTENT) break
-  }
-
-  const stickerPadding = 48
-  const stickerWidth = Math.min(
-    CONTENT,
-    amountWidth + (unit ? 20 + unitWidth : 0) + stickerPadding * 2,
-  )
-  const stickerHeight = Math.round(valueSize * 1.62)
-  withRotation(ctx, MARGIN + stickerWidth / 2, y + stickerHeight / 2, -2.5, () => {
-    ctx.fillStyle = LIME
-    roundRect(ctx, -stickerWidth / 2, -stickerHeight / 2, stickerWidth, stickerHeight, 34)
-    ctx.fill()
-
-    const contentWidth = amountWidth + (unit ? 20 + unitWidth : 0)
-    let x = -contentWidth / 2
-    const baseline = Math.round(valueSize * 0.35)
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'alphabetic'
-    ctx.font = font(800, valueSize)
-    ctx.fillStyle = INK
-    ctx.fillText(amount, x, baseline)
-    x += amountWidth
-    if (unit) {
-      ctx.font = font(700, unitSize)
-      ctx.fillStyle = 'rgba(10, 12, 9, 0.62)'
-      ctx.fillText(unit, x + 20, baseline)
-    }
-  })
-  y += stickerHeight + 52
-
-  // pillole statistiche
-  const pills = [
-    {
-      value: String(data.exercises.length),
-      label: data.exercises.length === 1 ? 'esercizio' : 'esercizi',
-    },
-    { value: String(data.totalSets), label: 'serie' },
-    { value: String(data.totalReps), label: 'rip' },
-  ]
-  const pillHeight = 74
-  let pillX = MARGIN
-  pills.forEach((pill, index) => {
-    ctx.font = font(800, 31)
-    const valueWidth = ctx.measureText(pill.value).width
-    ctx.font = font(600, 27)
-    const labelWidth = ctx.measureText(pill.label).width
-    const pillWidth = valueWidth + labelWidth + 78
-    withRotation(ctx, pillX + pillWidth / 2, y + pillHeight / 2, index === 1 ? 2.6 : -3.2, () => {
-      ctx.fillStyle = CARD_FILL
-      roundRect(ctx, -pillWidth / 2, -pillHeight / 2, pillWidth, pillHeight, pillHeight / 2)
-      ctx.fill()
-      ctx.strokeStyle = CARD_LINE
-      ctx.lineWidth = 2
-      ctx.stroke()
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'middle'
-      ctx.font = font(800, 31)
-      ctx.fillStyle = LIME
-      ctx.fillText(pill.value, -pillWidth / 2 + 30, 1)
-      ctx.font = font(600, 27)
-      ctx.fillStyle = MUTED
-      ctx.fillText(pill.label, -pillWidth / 2 + 30 + valueWidth + 12, 2)
-    })
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'alphabetic'
-    pillX += pillWidth + 18
-  })
-  y += pillHeight + 44
-
-  // chips gruppi muscolari
-  if (data.muscles.length > 0) {
-    const chips = data.muscles.slice(0, 6)
-    const chipHeight = 62
-    const chipGap = 16
-    let chipX = MARGIN
-    let chipY = y
-    chips.forEach((muscle, index) => {
-      ctx.font = font(700, 27)
-      const chipWidth = ctx.measureText(muscle).width + 58
-      if (chipX + chipWidth > W - MARGIN) {
-        chipX = MARGIN
-        chipY += chipHeight + chipGap
-      }
-      withRotation(
-        ctx,
-        chipX + chipWidth / 2,
-        chipY + chipHeight / 2,
-        index % 2 === 0 ? -3.5 : 2.8,
-        () => {
-          ctx.fillStyle = MUSCLE_COLORS[muscle] ?? MUTED
-          roundRect(ctx, -chipWidth / 2, -chipHeight / 2, chipWidth, chipHeight, chipHeight / 2)
-          ctx.fill()
-          ctx.fillStyle = INK
-          ctx.font = font(700, 27)
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
-          ctx.fillText(muscle, 0, 1)
-        },
-      )
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'alphabetic'
-      chipX += chipWidth + chipGap
-    })
-    y = chipY + chipHeight + 40
-  }
-
-  const listBottom = FOOTER_RULE_Y - 30
-  const top = findTopSet(data.workout)
-  if (top && listBottom - y > 330) {
-    const cardHeight = 132
-    ctx.fillStyle = CARD_FILL
-    roundRect(ctx, MARGIN, y, CONTENT, cardHeight, 28)
-    ctx.fill()
-    ctx.strokeStyle = CARD_LINE
-    ctx.lineWidth = 2
-    ctx.stroke()
-
-    withRotation(ctx, MARGIN + 80, y + cardHeight / 2, -8, () => {
-      ctx.fillStyle = LIME
-      roundRect(ctx, -54, -22, 108, 44, 14)
-      ctx.fill()
-      ctx.fillStyle = INK
-      ctx.font = font(800, 25)
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText('TOP', 0, 1)
-    })
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'alphabetic'
-
-    const headline =
-      top.weight > 0 ? `${formatWeight(top.weight)} kg × ${top.reps}` : `${top.reps} rip`
-    const subtitle =
-      top.weight > 0
-        ? `${top.exercise} · 1RM stimato ${formatWeight(top.e1rm)} kg`
-        : `${top.exercise} · corpo libero`
-
-    ctx.font = font(700, 33)
-    ctx.fillStyle = TEXT
-    ctx.fillText(truncate(ctx, headline, CONTENT - 230), MARGIN + 150, y + 58)
-    ctx.font = font(500, 26)
+  const detailLines = wrapWords(ctx, setsDetail(exercise), CONTENT - 190).slice(0, 2)
+  let cursor = y + 104
+  ctx.font = font(600, 33)
+  for (const line of detailLines) {
     ctx.fillStyle = MUTED
-    ctx.fillText(truncate(ctx, subtitle, CONTENT - 230), MARGIN + 150, y + 96)
-
-    y += cardHeight + 34
+    ctx.fillText(line, MARGIN + 36, cursor)
+    cursor += 44
   }
 
-  const listEnd = drawExerciseRows(ctx, data, y, listBottom, {
-    rowHeight: 96,
-    nameSize: 34,
-    summarySize: 28,
-    dotRadius: 8,
-    align: 'top',
-  })
-
-  const stickerTop = listEnd + 24
-  if (listBottom - stickerTop > 200) {
-    drawBottomSticker(ctx, data, stickerTop, listBottom)
-  }
-
-  drawFooter(ctx, data)
+  return y + 96 + detailLines.length * 44
 }
 
-function drawBottomSticker(
+function drawExercises(
   ctx: CanvasRenderingContext2D,
   data: CardData,
-  areaTop: number,
-  areaBottom: number,
+  y: number,
+  bottom: number,
 ): void {
-  const hasNote = data.note.length > 0
-  const cardHeight = hasNote ? 168 : 148
-  const centerY = areaTop + (areaBottom - areaTop) / 2
-  withRotation(ctx, W / 2, centerY, -1.6, () => {
-    ctx.fillStyle = CARD_FILL
-    roundRect(ctx, -CONTENT / 2, -cardHeight / 2, CONTENT, cardHeight, 30)
-    ctx.fill()
-    ctx.strokeStyle = CARD_LINE
-    ctx.lineWidth = 2
-    ctx.stroke()
+  if (data.exercises.length === 0) {
+    ctx.fillStyle = MUTED
+    ctx.font = font(600, 34)
+    ctx.fillText('Nessun esercizio registrato', MARGIN, y + 60)
+    return
+  }
 
-    const left = -CONTENT / 2 + 44
+  // Preventivo: lascia spazio alla riga «altri N esercizi» se serve
+  ctx.font = font(600, 32)
+  let total = 0
+  for (const exercise of data.exercises) total += exerciseRowHeight(ctx, exercise)
+
+  const fits = total <= bottom - y
+  const overflowLine = !fits ? 74 : 0
+  const available = bottom - y - overflowLine
+
+  let cursor = y
+  let shown = 0
+  for (const exercise of data.exercises) {
+    const height = exerciseRowHeight(ctx, exercise)
+    if (cursor + height > y + available) break
+    cursor = drawExerciseRow(ctx, exercise, cursor, shown === 0)
+    shown += 1
+  }
+
+  if (shown < data.exercises.length) {
+    ctx.fillStyle = FAINT
+    ctx.font = font(600, 32)
     ctx.textAlign = 'left'
-    ctx.textBaseline = 'alphabetic'
+    ctx.fillText(`+ altri ${data.exercises.length - shown} esercizi`, MARGIN + 36, cursor + 54)
+  }
+}
 
-    if (hasNote) {
-      ctx.font = font(700, 22)
-      ctx.fillStyle = LIME
-      spacedText(ctx, 'NOTE', left, -cardHeight / 2 + 44, 4)
-      ctx.font = italicFont(28)
-      ctx.fillStyle = TEXT
-      const maxWidth = CONTENT - 88
-      const wrapped = wrapWords(ctx, data.note, maxWidth)
-      const lines = wrapped.slice(0, 2)
-      if (wrapped.length > 2) {
-        lines[1] = truncate(ctx, `${lines[1]}…`, maxWidth)
-      }
-      lines.forEach((line, index) => {
-        ctx.fillText(line, left, -cardHeight / 2 + 92 + index * 38)
-      })
-      return
-    }
+function drawFooter(ctx: CanvasRenderingContext2D): void {
+  ctx.fillStyle = RULE
+  ctx.fillRect(MARGIN, FOOTER_RULE_Y, CONTENT, 2)
 
-    ctx.font = font(800, 38)
-    ctx.fillStyle = LIME
-    const label = 'SESSIONE FATTA'
-    ctx.fillText(label, left, 12)
-    const labelWidth = ctx.measureText(label).width
-    ctx.strokeStyle = LIME
-    ctx.lineWidth = 4
-    ctx.lineCap = 'round'
-    ctx.beginPath()
-    ctx.moveTo(left + labelWidth + 26, 2)
-    ctx.lineTo(left + labelWidth + 40, 16)
-    ctx.lineTo(left + labelWidth + 72, -18)
-    ctx.stroke()
-  })
+  drawMark(ctx, MARGIN, FOOTER_NAME_BASELINE - 40, 44)
+  ctx.textAlign = 'left'
+  ctx.fillStyle = TEXT
+  ctx.font = font(700, 38)
+  ctx.fillText(APP_NAME, MARGIN + 64, FOOTER_NAME_BASELINE)
+
+  ctx.fillStyle = FAINT
+  ctx.font = font(600, 25)
+  spacedText(ctx, FOOTER_TEXT, MARGIN, FOOTER_TEXT_BASELINE, 2.4)
 }
 
 // ---------- render ----------
 
 export function renderWorkoutCard(input: ShareCardInput): HTMLCanvasElement {
-  const style = input.style ?? 'completo'
+  const style = input.style ?? 'dati'
   const canvas = document.createElement('canvas')
   canvas.width = W
   canvas.height = H
@@ -1104,10 +535,23 @@ export function renderWorkoutCard(input: ShareCardInput): HTMLCanvasElement {
 
   const data = prepare(input)
 
-  drawBackground(ctx, style)
-  if (style === 'essenziale') drawEssenziale(ctx, data)
-  else if (style === 'social') drawSocial(ctx, data)
-  else drawCompleto(ctx, data)
+  if (style === 'foto' && input.photo) drawPhotoBackground(ctx, input.photo)
+  else drawPlainBackground(ctx)
+
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
+
+  let y = drawHeader(ctx, data)
+  y = drawTitle(ctx, data, y)
+  y = drawMeta(ctx, data, y)
+
+  y += 26
+  ctx.fillStyle = RULE
+  ctx.fillRect(MARGIN, y, CONTENT, 2)
+  y += 44
+
+  drawExercises(ctx, data, y, FOOTER_RULE_Y - 40)
+  drawFooter(ctx)
 
   return canvas
 }
@@ -1115,12 +559,11 @@ export function renderWorkoutCard(input: ShareCardInput): HTMLCanvasElement {
 // ---------- esportazione / condivisione ----------
 
 const STYLE_SLUG: Record<ShareCardStyle, string> = {
-  completo: 'completo',
-  essenziale: 'essenziale',
-  social: 'sticker',
+  foto: 'con-foto',
+  dati: 'solo-dati',
 }
 
-export function cardFileName(workout: WorkoutDetail, style: ShareCardStyle = 'completo'): string {
+export function cardFileName(workout: WorkoutDetail, style: ShareCardStyle = 'dati'): string {
   const slug = (workout.name.trim() || 'allenamento')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')

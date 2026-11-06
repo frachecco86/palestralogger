@@ -10,6 +10,17 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.4.0',
+    title: 'L’immagine dell’allenamento, in due versioni',
+    items: [
+      'Condivisione più semplice: due sole versioni, «Con foto» e «Solo dati».',
+      'Nella versione «Con foto» puoi caricare un’immagine dal telefono e usarla come sfondo, in stile Strava: la foto resta sul telefono e non viene caricata sul cloud.',
+      'Su ogni immagine trovi il tuo nome, la data, il nome dell’allenamento, il numero di serie e gli esercizi con il dettaglio dei carichi (es. «2 da 40 kg · 3 da 10 kg»).',
+      'In fondo ci sono il nome dell’app e il testo del footer.',
+      'Se gli esercizi sono tanti, l’immagine mostra i primi e il numero di quelli che restano.',
+    ],
+  },
+  {
     version: '2.3.1',
     title: 'Registrazione senza pulsanti bloccati',
     items: [

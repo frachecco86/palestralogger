@@ -43,8 +43,10 @@ del browser o cambiare telefono non li cancella più.
 - **Statistiche**: allenamenti, volume, serie, ripetizioni, giorni attivi, streak attuale e record,
   volume per gruppo muscolare, top esercizi, record stimati 1RM (Epley), grafico ultime 8 settimane.
 - **Dettaglio esercizio**: storico carico massimo per sessione, sessioni, volume, record.
-- **Condivisione come immagine**: card verticale 1080×1920 (9:16) in tre stili — **Completo**,
-  **Essenziale**, **Sticker** — con `navigator.share` o salvataggio PNG.
+- **Condivisione come immagine**: card verticale 1080×1920 (9:16) in due versioni — **Con foto**
+  (sfondo caricato dal telefono, in stile Strava) e **Solo dati** — con `navigator.share` o
+  salvataggio PNG. Contiene nome, data, titolo, numero di serie, esercizi con i carichi (es. «2 da
+  40 kg · 3 da 10 kg») e footer con nome dell'app e testo del footer.
 - **Storia delle versioni**: il numero di versione nel footer apre la modale con le novità spiegate
   in italiano semplice.
 - **Amici**: codice amico separato dall'account, richiesta + accettazione, allenamenti e statistiche
