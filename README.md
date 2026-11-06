@@ -22,8 +22,16 @@ del browser o cambiare telefono non li cancella più.
   lat machine, trazioni, military press, curl, hip thrust, plank, cardio…), ricerca con
   autocompletamento per nome e attrezzatura, filtro per gruppo muscolare.
 - **Foto esercizio**: una foto per esercizio (macchina, attrezzo, posizione), compressa sul telefono,
-  visibile in miniatura accanto al nome (anche nel selettore esercizi) e salvata anche nel cloud. In
-  modifica c'è anche «applica a tutte» per copiare i kg di una serie su tutte le altre.
+  visibile in miniatura accanto al nome e salvata anche nel cloud. La pagina **Esercizi** mostra la
+  miniatura di ogni esercizio (con riquadro segnaposto se la foto manca) e, aprendo l'esercizio,
+  l'immagine in grande.
+- **Ruolo amministratore**: le foto sono una **libreria unica condivisa** fra tutti gli account.
+  Solo l'account amministratore (`francescochecco@gmail.com`, vedi `ADMIN_EMAILS` in
+  `netlify/functions/account.ts` e `photo.ts`) può aggiungerle, sostituirle o rimuoverle, e solo
+  dalla pagina Esercizi: dentro la creazione/modifica di un allenamento sono in sola lettura. Il
+  permesso è verificato dal server, che risponde `403 admin_only` agli altri account; tutti possono
+  leggerle e ne tengono una copia offline.
+- **Peso in un tocco**: in modifica la serie ha «applica a tutte» per copiare i kg su tutte le altre.
 - **Esercizi personalizzati**: creazione al volo dalla ricerca («Crea "xyz"») con gruppo muscolare e
   attrezzatura; eliminabili se non usati.
 - **Auto-comportamento**: quando aggiungi un esercizio già fatto, vengono proposte le serie
@@ -95,9 +103,9 @@ palestralogger-social
   u/<uid>                      -> profilo social (codice amico, amici, snapshot)
   code/<codice amico>          -> uid
 palestralogger-photos
-  idx/<id account>             -> indice foto (metadati + cancellazioni)
-  p/<id account>/<esercizio>   -> immagine compressa (JPEG/PNG/WebP)
-  x/<id account>/<esercizio>   -> tombstone di cancellazione
+  idx/library                  -> indice della libreria condivisa (metadati + cancellazioni)
+  p/library/<esercizio>        -> immagine compressa (JPEG/PNG/WebP)
+  x/library/<esercizio>        -> tombstone di cancellazione
 ```
 
 ## Sincronizzazione

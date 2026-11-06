@@ -10,6 +10,17 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.2.0',
+    title: 'Immagini degli esercizi, gestite dall’amministratore',
+    items: [
+      'La pagina Esercizi (dal menù in basso) mostra la miniatura di ogni esercizio; se la foto manca c’è un riquadro segnaposto.',
+      'Aprendo un esercizio la foto si vede in grande, sopra sessioni, volume, record e andamento del carico.',
+      'Le immagini si possono aggiungere, sostituire o rimuovere solo dalla pagina Esercizi e solo con l’account amministratore: durante la creazione o la modifica di un allenamento sono in sola lettura.',
+      'La libreria delle immagini è unica e condivisa: l’amministratore la riempie una volta e tutti la vedono, su ogni dispositivo.',
+      'Il ruolo amministratore è legato all’email dell’account ed è verificato anche dal server: nessun altro account può cambiare le foto.',
+    ],
+  },
+  {
     version: '2.1.1',
     title: 'Le foto anche nella ricerca',
     items: [

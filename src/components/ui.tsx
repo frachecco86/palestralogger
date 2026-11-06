@@ -183,6 +183,7 @@ export function Button({
   disabled,
   type = 'button',
   full,
+  ariaLabel,
 }: {
   children: ReactNode
   onClick?: () => void
@@ -192,6 +193,7 @@ export function Button({
   disabled?: boolean
   type?: 'button' | 'submit'
   full?: boolean
+  ariaLabel?: string
 }) {
   const variants: Record<ButtonVariant, string> = {
     primary: 'bg-lime text-ink font-semibold hover:bg-lime/90 disabled:bg-lime/30 disabled:text-ink/50',
@@ -210,6 +212,7 @@ export function Button({
       type={type}
       onClick={onClick}
       disabled={disabled}
+      aria-label={ariaLabel}
       className={cx(
         'press inline-flex items-center justify-center select-none',
         variants[variant],

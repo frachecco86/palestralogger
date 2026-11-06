@@ -10,12 +10,28 @@ const TOKEN_KEY = 'palestralogger:account-token'
 const ACCOUNT_KEY = 'palestralogger:account-info'
 const API_URL = '/api/account'
 
+export type AccountRole = 'admin' | 'user'
+
 export interface Account {
   id: string
   uid: string
   email: string
   name: string
   createdAt: string
+  role?: AccountRole
+}
+
+/**
+ * Email con ruolo amministratore (le stesse della funzione cloud). Il ruolo
+ * arriva dal server, ma il controllo sull'email vale anche per le copie in
+ * cache salvate prima dell'introduzione dei ruoli.
+ */
+const ADMIN_EMAILS = ['francescochecco@gmail.com']
+
+export function isAdmin(account: Account | null = getCachedAccount()): boolean {
+  if (!account) return false
+  if (account.role === 'admin') return true
+  return ADMIN_EMAILS.includes(String(account.email ?? '').trim().toLowerCase())
 }
 
 export interface PullResult {
@@ -63,6 +79,8 @@ function messageFor(code: string): string {
       return 'Troppi dati da salvare'
     case 'not_found':
       return 'Account non trovato'
+    case 'admin_only':
+      return 'Solo l’amministratore può gestire le foto degli esercizi'
     case 'offline':
       return 'Server non raggiungibile: i dati restano sul telefono e verranno sincronizzati'
     case 'server_error':

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Exercise, Muscle, User } from '../lib/types'
 import { MUSCLES, MUSCLE_COLORS } from '../lib/types'
 import {
@@ -6,11 +6,17 @@ import {
   deleteExercise,
   getExerciseAggregates,
   getExerciseHistory,
+  getExercisePhoto,
+  listExercisePhotoMeta,
   listExercises,
+  type ExercisePhoto,
 } from '../db/queries'
+import { addExercisePhoto, removeExercisePhoto, syncPhotos } from '../lib/photo'
+import { getCachedAccount, isAdmin } from '../lib/account'
 import { formatDate } from '../lib/dates'
 import { formatKg, formatWeight, plural } from '../lib/format'
 import { toast, useLiveData } from '../lib/live'
+import { ExercisePhotoLarge, ExerciseThumb } from '../components/ExercisePhoto'
 import {
   Badge,
   Button,
@@ -40,6 +46,21 @@ export function ExercisesScreen({
   const [newEquipment, setNewEquipment] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Solo l'amministratore può aggiungere, sostituire o rimuovere le foto.
+  const admin = isAdmin(getCachedAccount())
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const photoTarget = useRef<string | null>(null)
+
+  function readLocalPhotos(): Record<string, ExercisePhoto> {
+    const map: Record<string, ExercisePhoto> = {}
+    for (const meta of listExercisePhotoMeta(user.id)) {
+      const photo = getExercisePhoto(user.id, meta.exerciseId)
+      if (photo) map[meta.exerciseId] = photo
+    }
+    return map
+  }
+
+  const [photos, setPhotos] = useState<Record<string, ExercisePhoto>>(readLocalPhotos)
 
   const exercises = useLiveData(() => listExercises(user.id), [user.id])
   const aggregates = useLiveData(() => getExerciseAggregates(user.id, 500), [user.id])
@@ -75,6 +96,85 @@ export function ExercisesScreen({
   }, [filtered])
 
   const usedCount = exercises.filter((e) => aggMap.has(e.id)).length
+
+  // Scarica dal cloud le foto mancanti degli esercizi visibili (a blocchi,
+  // per non pesare sulla rete con l'intera libreria).
+  const visibleIds = useMemo(() => filtered.slice(0, 24).map((e) => e.id), [filtered])
+  const visibleKey = visibleIds.join('|')
+  useEffect(() => {
+    if (visibleIds.length === 0) return
+    let alive = true
+    // attesa breve: mentre si cerca non si martella il server a ogni tasto
+    const timer = setTimeout(() => {
+      void syncPhotos(user.id, visibleIds)
+        .then((changed) => {
+          if (alive && changed.length > 0) setPhotos(readLocalPhotos())
+        })
+        .catch(() => {
+          /* offline: restano le foto già presenti */
+        })
+    }, 700)
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id, visibleKey])
+
+  // Aprendo l'esercizio si assicura che la sua foto sia aggiornata.
+  const detailId = detail?.id
+  useEffect(() => {
+    if (!detailId) return
+    let alive = true
+    void syncPhotos(user.id, [detailId])
+      .then((changed) => {
+        if (alive && changed.length > 0) setPhotos(readLocalPhotos())
+      })
+      .catch(() => {
+        /* offline */
+      })
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id, detailId])
+
+  function pickPhoto(exerciseId: string) {
+    photoTarget.current = exerciseId
+    photoInputRef.current?.click()
+  }
+
+  async function handlePhotoFile(file: File) {
+    const exerciseId = photoTarget.current
+    photoTarget.current = null
+    if (!exerciseId) return
+    try {
+      const { uploaded } = await addExercisePhoto(user.id, exerciseId, file)
+      const photo = getExercisePhoto(user.id, exerciseId)
+      if (photo) setPhotos((prev) => ({ ...prev, [exerciseId]: photo }))
+      toast(
+        uploaded
+          ? 'Foto salvata'
+          : 'Foto salvata sul telefono: sarà caricata appena torni online',
+      )
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Foto non salvata', 'err')
+    }
+  }
+
+  async function handleRemovePhoto(exerciseId: string) {
+    try {
+      await removeExercisePhoto(user.id, exerciseId)
+      setPhotos((prev) => {
+        const next = { ...prev }
+        delete next[exerciseId]
+        return next
+      })
+      toast('Foto rimossa')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Rimozione non riuscita', 'err')
+    }
+  }
 
   function resetCreate() {
     setCreating(false)
@@ -180,6 +280,12 @@ export function ExercisesScreen({
                       onClick={() => setDetail(e)}
                       className="press flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-surface2/50"
                     >
+                      <ExerciseThumb
+                        photo={photos[e.id]}
+                        placeholder
+                        size="md"
+                        name={e.name}
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="truncate text-[13px] font-medium">{e.name}</span>
@@ -209,7 +315,38 @@ export function ExercisesScreen({
       <Sheet open={!!detail} onClose={() => setDetail(null)} title={detail?.name}>
         {detail && (
           <div className="pb-5">
-            <div className="flex items-center gap-2">
+            <ExercisePhotoLarge photo={photos[detail.id]} name={detail.name} className="h-56" />
+
+            {admin && (
+              <div className="mt-2 flex gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  full
+                  onClick={() => pickPhoto(detail.id)}
+                  ariaLabel={
+                    photos[detail.id]
+                      ? `Sostituisci foto di ${detail.name}`
+                      : `Aggiungi foto a ${detail.name}`
+                  }
+                >
+                  <Icon name="camera" size={15} />
+                  {photos[detail.id] ? 'Sostituisci foto' : 'Aggiungi foto'}
+                </Button>
+                {photos[detail.id] && (
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => void handleRemovePhoto(detail.id)}
+                    ariaLabel={`Rimuovi foto di ${detail.name}`}
+                  >
+                    <Icon name="trash" size={15} />
+                  </Button>
+                )}
+              </div>
+            )}
+
+            <div className="mt-3 flex items-center gap-2">
               <span
                 className="h-2 w-2 rounded-full"
                 style={{ background: MUSCLE_COLORS[detail.muscle] }}
@@ -286,6 +423,18 @@ export function ExercisesScreen({
       </Sheet>
 
       {/* creazione */}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) void handlePhotoFile(file)
+          e.target.value = ''
+        }}
+      />
+
       <Sheet open={creating} onClose={resetCreate} title="Nuovo esercizio">
         <div className="space-y-4 pb-5">
           <Field label="Nome">

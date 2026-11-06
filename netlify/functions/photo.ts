@@ -5,11 +5,18 @@ import { createHash } from 'node:crypto'
  * Foto degli esercizi: salvate come blob separati (non nel payload di sync,
  * che resterebbe enorme). Il client tiene una copia locale in SQLite per
  * l'uso offline; qui c'è la copia cloud per il recupero su altri dispositivi.
+ *
+ * Le immagini sono una libreria condivisa fra tutti gli account: le gestisce
+ * (aggiunge, sostituisce, rimuove) solo l'amministratore, gli altri account le
+ * leggono. Così la foto della macchina viene caricata una volta e la vedono
+ * tutti.
  */
 
 const ACCOUNTS_STORE = 'palestralogger-accounts'
 const PHOTOS_STORE = 'palestralogger-photos'
 const PHOTO_PREFIX = 'p/'
+/** Proprietario logico della libreria condivisa (non è un id account). */
+const LIBRARY_ID = 'library'
 const DELETED_PREFIX = 'x/'
 const INDEX_PREFIX = 'idx/'
 const MAX_BYTES = 1_500_000
@@ -22,7 +29,15 @@ interface AccountRecord {
   id: string
   uid: string
   name: string
+  email?: string
   passwordChangedAt: string
+}
+
+/** Stesse email amministratrici della funzione account (ruolo derivato). */
+const ADMIN_EMAILS = new Set(['francescochecco@gmail.com'])
+
+function isAdmin(account: AccountRecord): boolean {
+  return ADMIN_EMAILS.has(String(account.email ?? '').trim().toLowerCase())
 }
 
 interface PhotoMeta {
@@ -182,19 +197,20 @@ export const handler = async (event: Event) => {
 
   try {
     const account = await authenticate(store, body.token)
-    const accountId = account.id
+    // la libreria è unica: leggono tutti, scrive solo l'amministratore
+    const libraryId = LIBRARY_ID
 
     if (action === 'list') {
-      const index = await readIndex(store, accountId)
+      const index = await readIndex(store, libraryId)
       return respond(200, index)
     }
 
     if (action === 'get') {
       const exerciseId = normalizeExerciseId(body.exerciseId)
-      const index = await readIndex(store, accountId)
+      const index = await readIndex(store, libraryId)
       const meta = index.photos[exerciseId]
       if (!meta) throw new HttpError(404, 'not_found')
-      const bytes = await store.photos.get(PHOTO_PREFIX + accountId + '/' + exerciseId, {
+      const bytes = await store.photos.get(PHOTO_PREFIX + libraryId + '/' + exerciseId, {
         type: 'arrayBuffer',
       })
       if (!bytes) throw new HttpError(404, 'not_found')
@@ -207,6 +223,8 @@ export const handler = async (event: Event) => {
     }
 
     if (action === 'put') {
+      // Solo l'amministratore gestisce le immagini degli esercizi.
+      if (!isAdmin(account)) throw new HttpError(403, 'admin_only')
       const exerciseId = normalizeExerciseId(body.exerciseId)
       const mime = String(body.mime ?? '')
       if (!MIME_RE.test(mime)) throw new HttpError(400, 'invalid_mime')
@@ -219,27 +237,28 @@ export const handler = async (event: Event) => {
       if (sniffed && sniffed !== mime) throw new HttpError(400, 'invalid_mime')
 
       const updatedAt = normalizeUpdatedAt(body.updatedAt)
-      const index = await readIndex(store, accountId)
+      const index = await readIndex(store, libraryId)
       // una foto cancellata su un altro dispositivo non deve "risorgere" da una copia vecchia
       const tombstone = index.deleted[exerciseId]
       if (tombstone && Date.parse(tombstone) > Date.parse(updatedAt)) {
         return respond(200, { ok: true, ignored: true, deletedAt: tombstone })
       }
-      await store.photos.set(PHOTO_PREFIX + accountId + '/' + exerciseId, bytes)
+      await store.photos.set(PHOTO_PREFIX + libraryId + '/' + exerciseId, bytes)
       delete index.deleted[exerciseId]
       index.photos[exerciseId] = { updatedAt, size: bytes.length, mime }
-      await writeIndex(store, accountId, index)
+      await writeIndex(store, libraryId, index)
       return respond(200, { ok: true, exerciseId, updatedAt, size: bytes.length })
     }
 
     if (action === 'delete') {
+      if (!isAdmin(account)) throw new HttpError(403, 'admin_only')
       const exerciseId = normalizeExerciseId(body.exerciseId)
-      const index = await readIndex(store, accountId)
+      const index = await readIndex(store, libraryId)
       delete index.photos[exerciseId]
       index.deleted[exerciseId] = new Date().toISOString()
-      await writeIndex(store, accountId, index)
+      await writeIndex(store, libraryId, index)
       try {
-        await store.photos.delete(PHOTO_PREFIX + accountId + '/' + exerciseId)
+        await store.photos.delete(PHOTO_PREFIX + libraryId + '/' + exerciseId)
       } catch {
         /* la foto potrebbe non esistere */
       }

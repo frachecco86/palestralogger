@@ -32,6 +32,18 @@ const LOGIN_MAX_FAILS = 8
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const LEGACY_CODE_RE = /^[A-Z0-9]{4}(-[A-Z0-9]{4}){3}$/
+/**
+ * Email con ruolo amministratore: possono gestire (aggiungere, sostituire,
+ * rimuovere) le immagini degli esercizi di tutti gli account.
+ * Il ruolo è derivato dall'email, così non serve migrare i record esistenti.
+ */
+const ADMIN_EMAILS = new Set(['francescochecco@gmail.com'])
+
+export type Role = 'admin' | 'user'
+
+export function roleForEmail(email: unknown): Role {
+  return ADMIN_EMAILS.has(String(email ?? '').trim().toLowerCase()) ? 'admin' : 'user'
+}
 
 interface Account {
   id: string
@@ -138,6 +150,7 @@ function publicAccount(account: Account) {
     email: account.email,
     name: account.name,
     createdAt: account.createdAt,
+    role: roleForEmail(account.email),
   }
 }
 

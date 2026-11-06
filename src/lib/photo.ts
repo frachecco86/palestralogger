@@ -4,11 +4,15 @@ import {
   listExercisePhotoMeta,
   saveExercisePhoto,
 } from '../db/queries'
-import { getToken } from './account'
+import { getToken, isAdmin } from './account'
 
 /**
  * Foto esercizio: compressa sul telefono, salvata in SQLite (cache offline) e
  * caricata come blob separato, così non gonfia il payload di sincronizzazione.
+ *
+ * Le immagini sono una libreria unica condivisa da tutti gli account: le
+ * scrive solo l'amministratore (aggiunta, sostituzione, rimozione), tutti gli
+ * altri le leggono e ne tengono una copia locale per l'offline.
  */
 
 const API = '/api/photo'
@@ -47,6 +51,8 @@ function messageFor(code: string): string {
       return 'Formato immagine non supportato'
     case 'invalid_exercise':
       return 'Esercizio non valido'
+    case 'admin_only':
+      return 'Solo l’amministratore può gestire le foto degli esercizi'
     case 'not_found':
       return 'Foto non trovata'
     case 'offline':
@@ -161,6 +167,7 @@ export async function addExercisePhoto(
   exerciseId: string,
   file: File,
 ): Promise<{ updatedAt: string; uploaded: boolean }> {
+  if (!isAdmin()) throw new PhotoError('admin_only', 403)
   const { mime, bytes } = await compressImage(file)
   const updatedAt = saveExercisePhoto(userId, exerciseId, mime, bytes)
   let uploaded = true
@@ -179,6 +186,7 @@ export async function addExercisePhoto(
 
 /** Rimuove la foto: dal cloud prima, così non "risorge" da un altro dispositivo. */
 export async function removeExercisePhoto(userId: string, exerciseId: string): Promise<void> {
+  if (!isAdmin()) throw new PhotoError('admin_only', 403)
   await call('delete', { exerciseId })
   deleteExercisePhoto(userId, exerciseId)
 }
@@ -217,27 +225,30 @@ export async function syncPhotos(userId: string, downloadFor: string[] = []): Pr
     changed.add(exerciseId)
   }
 
-  // 2. upload delle foto locali nuove o più recenti
-  for (const [exerciseId, localAt] of localMeta) {
-    const remoteMeta = photos[exerciseId]
-    if (remoteMeta && remoteMeta.updatedAt >= localAt) continue
-    const local = getExercisePhoto(userId, exerciseId)
-    if (!local) continue
-    if (local.bytes.length > MAX_UPLOAD_BYTES) continue
-    try {
-      const result = await call<{ ignored?: boolean }>('put', {
-        exerciseId,
-        mime: local.mime,
-        updatedAt: localAt,
-        data: bytesToBase64(local.bytes),
-      })
-      if (result.ignored) {
-        // cancellata altrove dopo questa copia: si rimuove anche in locale
-        deleteExercisePhoto(userId, exerciseId)
+  // 2. upload delle foto locali nuove o più recenti (solo l'amministratore
+  //    può scrivere nel cloud: gli altri si limitano a leggere)
+  if (isAdmin()) {
+    for (const [exerciseId, localAt] of localMeta) {
+      const remoteMeta = photos[exerciseId]
+      if (remoteMeta && remoteMeta.updatedAt >= localAt) continue
+      const local = getExercisePhoto(userId, exerciseId)
+      if (!local) continue
+      if (local.bytes.length > MAX_UPLOAD_BYTES) continue
+      try {
+        const result = await call<{ ignored?: boolean }>('put', {
+          exerciseId,
+          mime: local.mime,
+          updatedAt: localAt,
+          data: bytesToBase64(local.bytes),
+        })
+        if (result.ignored) {
+          // cancellata altrove dopo questa copia: si rimuove anche in locale
+          deleteExercisePhoto(userId, exerciseId)
+        }
+        changed.add(exerciseId)
+      } catch {
+        /* offline o troppo grande: si riprova al prossimo giro */
       }
-      changed.add(exerciseId)
-    } catch {
-      /* offline o troppo grande: si riprova al prossimo giro */
     }
   }
 

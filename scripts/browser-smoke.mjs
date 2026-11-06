@@ -60,15 +60,19 @@ globalThis.fetch = async (input, init) => {
   }
   if (url.includes('api/account')) {
     const body = JSON.parse(init?.body || '{}')
+    const adminEmail = 'francescochecco@gmail.com'
+    const admin = String(body.token || '').startsWith('token-admin') || body.email === adminEmail
     const account = {
       id: 'acct-1',
       uid: 'acct-1',
-      email: body.email || 'marco@example.com',
+      email: admin ? adminEmail : body.email || 'marco@example.com',
       name: body.name || 'Marco',
       createdAt: '2026-10-26T10:00:00.000Z',
+      role: admin ? 'admin' : 'user',
     }
     if (body.action === 'register' || body.action === 'login') {
-      return json({ token: 'token-di-prova-0123456789abcdef', account, recoveryCode: 'AAAA-BBBB-CCCC-DDDD', revision: 0 })
+      const token = admin ? 'token-admin-0123456789abcdef' : 'token-di-prova-0123456789abcdef'
+      return json({ token, account, recoveryCode: 'AAAA-BBBB-CCCC-DDDD', revision: 0 })
     }
     if (body.action === 'session') return json({ account, revision: 0 })
     if (body.action === 'pull') return json({ revision: 0, payload: null })
@@ -76,6 +80,11 @@ globalThis.fetch = async (input, init) => {
     if (body.action === 'claimSyncCode') return json({ error: 'no_data' }, 404)
     if (body.action === 'delete') return json({ ok: true })
     return json({ ok: true })
+  }
+  if (url.includes('api/photo')) {
+    const body = JSON.parse(init?.body || '{}')
+    if (body.action === 'list') return json({ photos: {}, deleted: {} })
+    return json({ error: 'not_found' }, 404)
   }
   if (url.includes('api/social')) {
     if (LIVE) return realFetch(input, init)
@@ -215,8 +224,9 @@ setValue(w2, '0')
 setValue(w3, '0')
 await wait(250)
 
-if (!buttons().some((b) => aria(b).startsWith('Aggiungi foto')))
-  throw new Error('tasto foto mancante in modalità modifica')
+// le foto si modificano solo dalla pagina Esercizi
+if (buttons().some((b) => aria(b).startsWith('Aggiungi foto')))
+  throw new Error('foto modificabile nell’allenamento')
 
 console.log('5. serie:', window.document.querySelectorAll('input[aria-label^="ripetizioni"]').length)
 if (![...window.document.querySelectorAll('button')].some((b) => (b.textContent || '').trim() === 'Aggiungi serie'))
@@ -263,8 +273,8 @@ if (!window.document.querySelector('input[aria-label="ripetizioni serie 1"]'))
   throw new Error('input non attivo in modalità modifica')
 if (!buttonWithText('Aggiungi esercizio'))
   throw new Error('«Aggiungi esercizio» non attivo in modalità modifica')
-if (!buttons().some((b) => aria(b).startsWith('Aggiungi foto')))
-  throw new Error('foto non attivabile in modalità modifica')
+if (buttons().some((b) => aria(b).startsWith('Aggiungi foto')))
+  throw new Error('foto ancora modificabile nell’allenamento')
 await clickText('Fine', { exact: true })
 await wait(300)
 if (buttons().some((b) => aria(b).startsWith('Rimuovi Panca')))
@@ -309,6 +319,25 @@ window.document.querySelector('[aria-label="Chiudi"]')?.click()
 await wait(400)
 if (body().includes('Novità di PalestraLogger')) throw new Error('modale versioni non chiusa')
 
+// pagina Esercizi: miniature con segnaposto e immagine grande, nessuna modifica per i non admin
+await clickText('Esercizi')
+await wait(900)
+console.log('9a. esercizi:', body().slice(0, 160))
+if (!body().includes('disponibili')) throw new Error('pagina esercizi non aperta')
+const placeholders = [...window.document.querySelectorAll('span[aria-hidden="true"]')].filter((el) =>
+  String(el.className).includes('h-11 w-11'),
+)
+if (placeholders.length === 0) throw new Error('miniature segnaposto mancanti nella lista')
+await clickText('Panca piana')
+await wait(700)
+if (!body().includes('Nessuna foto')) throw new Error('immagine grande con segnaposto mancante')
+if (buttons().some((b) => aria(b).startsWith('Aggiungi foto')))
+  throw new Error('utente normale può aggiungere foto')
+if (buttons().some((b) => aria(b).startsWith('Rimuovi foto')))
+  throw new Error('utente normale può rimuovere foto')
+window.document.querySelector('[aria-label="Chiudi"]')?.click()
+await wait(400)
+
 // amici (API mockata; in LIVE richiederebbe account reali)
 if (!LIVE) {
 await clickText('Oggi')
@@ -341,6 +370,27 @@ await wait(1800)
 console.log('8. riavvio con sessione:', body().slice(0, 140))
 if (body().includes('Qualcosa è andato storto')) throw new Error('crash al riavvio')
 if (!body().includes('Ciao, Marco')) throw new Error('sessione non ripristinata al riavvio')
+
+// amministratore: gestione foto dalla pagina Esercizi
+window.localStorage.setItem('palestralogger:account-token', 'token-admin-0123456789abcdef')
+const cachedAccount = JSON.parse(window.localStorage.getItem('palestralogger:account-info') || '{}')
+window.localStorage.setItem(
+  'palestralogger:account-info',
+  JSON.stringify({ ...cachedAccount, email: 'francescochecco@gmail.com', role: 'admin' }),
+)
+window.location.hash = '#/ex'
+window.document.body.innerHTML = '<div id="root"></div>'
+await import(pathToFileURL(bundlePath).href + '?reload=admin')
+await wait(2200)
+console.log('11. esercizi admin:', body().slice(0, 140))
+await clickText('Panca piana')
+await wait(700)
+if (!body().includes('Nessuna foto')) throw new Error('immagine grande mancante per admin')
+if (!buttons().some((b) => aria(b).startsWith('Aggiungi foto')))
+  throw new Error('admin non può aggiungere foto')
+window.document.querySelector('[aria-label="Chiudi"]')?.click()
+await wait(300)
+console.log('11a. admin può gestire le foto ok')
 
 console.log('--- ERRORS ---')
 console.log(errors.length ? errors.join('\n') : '(none)')

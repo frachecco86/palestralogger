@@ -28,17 +28,22 @@ function ThumbImage({ photo }: { photo: ExercisePhoto }) {
 /** Miniatura accanto al nome dell'esercizio (o tasto per aggiungerla). */
 export function ExerciseThumb({
   photo,
-  editable,
+  editable = false,
+  placeholder = false,
+  size = 'sm',
   name,
   onClick,
 }: {
   photo?: ExercisePhoto
-  editable: boolean
+  editable?: boolean
+  /** Mostra un riquadro segnaposto quando la foto non c'è ancora. */
+  placeholder?: boolean
+  size?: 'sm' | 'md'
   name: string
   /** Se assente la miniatura è solo decorativa (es. dentro una riga cliccabile). */
   onClick?: () => void
 }) {
-  if (!photo && !editable) return null
+  if (!photo && !editable && !placeholder) return null
 
   const content = (
     <>
@@ -46,7 +51,7 @@ export function ExerciseThumb({
         <ThumbImage photo={photo} />
       ) : (
         <span className="flex h-full w-full items-center justify-center">
-          <Icon name="camera" size={15} />
+          <Icon name="dumbbell" size={size === 'md' ? 17 : 15} />
         </span>
       )}
       {editable && photo && (
@@ -58,7 +63,8 @@ export function ExerciseThumb({
   )
 
   const className = cx(
-    'relative h-9 w-9 shrink-0 overflow-hidden rounded-lg border',
+    'relative shrink-0 overflow-hidden rounded-lg border',
+    size === 'md' ? 'h-11 w-11' : 'h-9 w-9',
     photo ? 'border-line2 bg-surface2' : 'border-dashed border-line2 bg-surface2/60 text-faint',
     onClick && 'press',
   )
@@ -83,6 +89,38 @@ export function ExerciseThumb({
   )
 }
 
+/** Immagine grande dell'esercizio, con segnaposto se la foto non c'è ancora. */
+export function ExercisePhotoLarge({
+  photo,
+  name,
+  className,
+}: {
+  photo?: ExercisePhoto
+  name: string
+  className?: string
+}) {
+  const url = usePhotoUrl(photo)
+
+  return (
+    <div
+      className={cx(
+        'relative flex w-full items-center justify-center overflow-hidden rounded-2xl border bg-surface2',
+        url ? 'border-line' : 'border-dashed border-line2',
+        className ?? 'h-52',
+      )}
+    >
+      {url ? (
+        <img src={url} alt={`Foto di ${name}`} className="h-full w-full object-contain" />
+      ) : (
+        <div className="flex flex-col items-center gap-1.5 text-faint">
+          <Icon name="dumbbell" size={26} />
+          <span className="text-[11px]">Nessuna foto</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Anteprima grande (lettura) o gestione della foto (modifica). */
 export function ExercisePhotoSheet({
   open,
@@ -98,33 +136,21 @@ export function ExercisePhotoSheet({
   exerciseName: string
   editable: boolean
   onClose: () => void
-  onReplace: () => void
-  onRemove: () => void
+  onReplace?: () => void
+  onRemove?: () => void
 }) {
-  const url = usePhotoUrl(open ? photo : null)
-
   return (
     <Sheet open={open} onClose={onClose} title={exerciseName}>
       <div className="pb-5">
-        {url ? (
-          <img
-            src={url}
-            alt={`Foto di ${exerciseName}`}
-            className="max-h-[52vh] w-full rounded-2xl border border-line bg-surface2 object-contain"
-          />
-        ) : (
-          <div className="flex h-40 w-full items-center justify-center rounded-2xl border border-dashed border-line2 text-[12px] text-faint">
-            Nessuna foto
-          </div>
-        )}
+        <ExercisePhotoLarge photo={photo} name={exerciseName} className="h-[52vh]" />
 
         <div className="mt-4 space-y-2">
-          {editable && (
+          {editable && onReplace && (
             <Button full variant="secondary" onClick={onReplace}>
               <Icon name="camera" size={15} /> {photo ? 'Sostituisci foto' : 'Aggiungi foto'}
             </Button>
           )}
-          {editable && photo && (
+          {editable && photo && onRemove && (
             <Button full variant="danger" onClick={onRemove}>
               <Icon name="trash" size={15} /> Rimuovi foto
             </Button>
@@ -136,8 +162,9 @@ export function ExercisePhotoSheet({
 
         <p className="mt-3 flex gap-1.5 text-[11px] leading-relaxed text-faint">
           <Icon name="lock" size={13} className="mt-0.5 shrink-0" />
-          La foto viene compressa sul telefono, resta disponibile offline e viene salvata anche nel
-          tuo account.
+          {editable
+            ? 'La foto viene compressa sul telefono, resta disponibile offline e viene salvata anche nell’account.'
+            : 'Le foto degli esercizi le gestisce solo l’amministratore dalla pagina Esercizi.'}
         </p>
       </div>
     </Sheet>

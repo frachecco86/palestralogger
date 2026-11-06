@@ -3,6 +3,7 @@ import {
   AccountError,
   changePassword,
   getCachedAccount,
+  isAdmin,
   rotateRecoveryCode,
 } from '../lib/account'
 import { formatSyncTime, getLastSync, isSyncing, syncNow, type SyncMeta } from '../lib/sync'
@@ -120,6 +121,7 @@ export function AccountCard({ userId }: { userId: string }) {
               <div className="flex items-center gap-1.5">
                 <p className="text-[13px] font-semibold">Account cloud</p>
                 <Badge color="#C8FF3D">attivo</Badge>
+                {isAdmin(account) && <Badge color="#FFE066">admin</Badge>}
               </div>
               <p className="truncate text-[11px] text-muted">{account?.email ?? '—'}</p>
               <p className={cx('text-[10.5px] leading-tight', meta && !meta.ok ? 'text-danger' : 'text-faint')}>

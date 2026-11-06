@@ -193,7 +193,7 @@ const bState = await social('me', b.body.token)
 check('l\'amico vede lo snapshot', bState.body.friends?.[0]?.snapshot?.workouts?.length === 1)
 check('cancellazione amici', (await social('delete', a.body.token)).status === 200)
 
-console.log('12. foto esercizio')
+console.log('12. foto esercizio (solo amministratore)')
 const photoMod = await import(pathToFileURL(resolve(outDir, 'photo.mjs')).href)
 async function photoCall(action, token, body = {}) {
   const res = await photoMod.handler({
@@ -205,48 +205,67 @@ async function photoCall(action, token, body = {}) {
 }
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]).toString('base64')
 check('foto senza token 401', (await photoCall('list', 'x'.repeat(40))).status === 401)
-const emptyList = await photoCall('list', a.body.token)
+
+// ruolo: solo l'email amministratrice può gestire le immagini
+check('utente normale con ruolo user', a.body.account?.role === 'user', JSON.stringify(a.body.account))
+const adminReg = await call('register', { email: 'francescochecco@gmail.com', password, name: 'Checco' })
+check('amministratore riconosciuto', adminReg.body.account?.role === 'admin', JSON.stringify(adminReg.body.account))
+const adminToken = adminReg.body.token
+check(
+  'non admin non può caricare 403',
+  (await photoCall('put', a.body.token, { exerciseId: 'def-panca-piana', mime: 'image/jpeg', data: jpeg })).status === 403,
+)
+check(
+  'non admin non può cancellare 403',
+  (await photoCall('delete', a.body.token, { exerciseId: 'def-panca-piana' })).status === 403,
+)
+check('non admin può leggere le foto', (await photoCall('list', a.body.token)).status === 200)
+const emptyList = await photoCall('list', adminToken)
 check('indice foto vuoto', emptyList.status === 200 && Object.keys(emptyList.body.photos ?? {}).length === 0)
 check(
   'mime non valido 400',
-  (await photoCall('put', a.body.token, { exerciseId: 'def-panca-piana', mime: 'text/plain', data: jpeg })).status === 400,
+  (await photoCall('put', adminToken, { exerciseId: 'def-panca-piana', mime: 'text/plain', data: jpeg })).status === 400,
 )
 check(
   'esercizio non valido 400',
-  (await photoCall('put', a.body.token, { exerciseId: '../x', mime: 'image/jpeg', data: jpeg })).status === 400,
+  (await photoCall('put', adminToken, { exerciseId: '../x', mime: 'image/jpeg', data: jpeg })).status === 400,
 )
-const put = await photoCall('put', a.body.token, {
+const put = await photoCall('put', adminToken, {
   exerciseId: 'def-panca-piana',
   mime: 'image/jpeg',
   data: jpeg,
   updatedAt: '2026-11-05T10:00:00.000Z',
 })
 check('upload foto', put.status === 200 && put.body.size === Buffer.from(jpeg, 'base64').length, JSON.stringify(put.body))
-const idx1 = await photoCall('list', a.body.token)
+const sharedList = await photoCall('list', a.body.token)
+check('foto della libreria visibile a tutti', sharedList.body.photos?.['def-panca-piana']?.mime === 'image/jpeg')
+const sharedGet = await photoCall('get', a.body.token, { exerciseId: 'def-panca-piana' })
+check('download della libreria per i non admin', sharedGet.status === 200 && sharedGet.body.data === jpeg)
+const idx1 = await photoCall('list', adminToken)
 check('indice aggiornato', idx1.body.photos?.['def-panca-piana']?.mime === 'image/jpeg')
-const got = await photoCall('get', a.body.token, { exerciseId: 'def-panca-piana' })
+const got = await photoCall('get', adminToken, { exerciseId: 'def-panca-piana' })
 check('download foto identica', got.status === 200 && got.body.data === jpeg)
-const stalePut = await photoCall('put', a.body.token, {
+const stalePut = await photoCall('put', adminToken, {
   exerciseId: 'def-panca-piana',
   mime: 'image/jpeg',
   data: jpeg,
   updatedAt: '2026-01-01T00:00:00.000Z',
 })
 check('upload vecchio non sovrascrive', stalePut.status === 200 && stalePut.body.ignored === undefined)
-const delPhoto = await photoCall('delete', a.body.token, { exerciseId: 'def-panca-piana' })
+const delPhoto = await photoCall('delete', adminToken, { exerciseId: 'def-panca-piana' })
 check('cancellazione foto', delPhoto.status === 200)
-const afterDelete = await photoCall('put', a.body.token, {
+const afterDelete = await photoCall('put', adminToken, {
   exerciseId: 'def-panca-piana',
   mime: 'image/jpeg',
   data: jpeg,
   updatedAt: '2020-01-01T00:00:00.000Z',
 })
 check('upload pre-cancellazione ignorato', afterDelete.body.ignored === true)
-const idx2 = await photoCall('list', a.body.token)
+const idx2 = await photoCall('list', adminToken)
 check('tombstone foto', !!idx2.body.deleted?.['def-panca-piana'])
 check(
   'download dopo cancellazione 404',
-  (await photoCall('get', a.body.token, { exerciseId: 'def-panca-piana' })).status === 404,
+  (await photoCall('get', adminToken, { exerciseId: 'def-panca-piana' })).status === 404,
 )
 
 console.log('')

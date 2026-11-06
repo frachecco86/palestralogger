@@ -13,7 +13,7 @@ import {
 import { addDays, formatDate, todayISO } from '../lib/dates'
 import { formatKg, plural } from '../lib/format'
 import { toast } from '../lib/live'
-import { addExercisePhoto, removeExercisePhoto, syncPhotos } from '../lib/photo'
+import { syncPhotos } from '../lib/photo'
 import { Button, Card, Chip, Icon, Sheet, cx } from '../components/ui'
 import { ExercisePicker } from '../components/ExercisePicker'
 import { ExercisePhotoSheet, ExerciseThumb } from '../components/ExercisePhoto'
@@ -156,9 +156,9 @@ export function WorkoutEditor({
     }
     return map
   })
+  // Le foto si modificano solo dalla pagina Esercizi (e solo per l'amministratore):
+  // qui vengono soltanto mostrate.
   const [photoView, setPhotoView] = useState<string | null>(null)
-  const photoTarget = useRef<string | null>(null)
-  const photoInputRef = useRef<HTMLInputElement>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const initialAdded = useRef(false)
   const [confirmClose, setConfirmClose] = useState(false)
@@ -298,45 +298,6 @@ export function WorkoutEditor({
       alive = false
     }
   }, [userId, exerciseIdsKey])
-
-  function pickPhoto(exerciseId: string) {
-    photoTarget.current = exerciseId
-    photoInputRef.current?.click()
-  }
-
-  async function handlePhotoFile(file: File) {
-    const exerciseId = photoTarget.current
-    photoTarget.current = null
-    if (!exerciseId) return
-    try {
-      const { uploaded } = await addExercisePhoto(userId, exerciseId, file)
-      const photo = getExercisePhoto(userId, exerciseId)
-      if (photo) setPhotos((prev) => ({ ...prev, [exerciseId]: photo }))
-      setPhotoView(exerciseId)
-      toast(
-        uploaded
-          ? 'Foto salvata'
-          : 'Foto salvata sul telefono: sarà caricata appena torni online',
-      )
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'Foto non salvata', 'err')
-    }
-  }
-
-  async function removePhoto(exerciseId: string) {
-    try {
-      await removeExercisePhoto(userId, exerciseId)
-      setPhotos((prev) => {
-        const next = { ...prev }
-        delete next[exerciseId]
-        return next
-      })
-      setPhotoView(null)
-      toast('Foto rimossa')
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'Rimozione non riuscita', 'err')
-    }
-  }
 
   function handleSave() {
     setError(null)
@@ -527,7 +488,6 @@ export function WorkoutEditor({
                 />
                 <ExerciseThumb
                   photo={photos[entry.exercise.id]}
-                  editable={editMode}
                   name={entry.exercise.name}
                   onClick={() => setPhotoView(entry.exercise.id)}
                 />
@@ -758,28 +718,8 @@ export function WorkoutEditor({
         open={!!photoView}
         photo={photoView ? photos[photoView] : undefined}
         exerciseName={entries.find((e) => e.exercise.id === photoView)?.exercise.name ?? ''}
-        editable={editMode}
+        editable={false}
         onClose={() => setPhotoView(null)}
-        onReplace={() => {
-          const id = photoView
-          setPhotoView(null)
-          if (id) pickPhoto(id)
-        }}
-        onRemove={() => {
-          if (photoView) void removePhoto(photoView)
-        }}
-      />
-
-      <input
-        ref={photoInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/*"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) void handlePhotoFile(file)
-          e.target.value = ''
-        }}
       />
 
       <ExercisePicker
