@@ -241,6 +241,28 @@ const sharedList = await photoCall('list', a.body.token)
 check('foto della libreria visibile a tutti', sharedList.body.photos?.['def-panca-piana']?.mime === 'image/jpeg')
 const sharedGet = await photoCall('get', a.body.token, { exerciseId: 'def-panca-piana' })
 check('download della libreria per i non admin', sharedGet.status === 200 && sharedGet.body.data === jpeg)
+
+// esercizio creato dall'utente: la foto è privata e la gestisce il proprietario
+const customId = '3f6a1e40-8b3c-4e5d-9a21-7c0d2b6e4f11'
+const customPut = await photoCall('put', a.body.token, {
+  exerciseId: customId,
+  mime: 'image/jpeg',
+  data: jpeg,
+  updatedAt: '2026-11-05T12:00:00.000Z',
+})
+check('utente normale carica la foto del suo esercizio', customPut.status === 200, JSON.stringify(customPut.body))
+const ownerList = await photoCall('list', a.body.token)
+check('la foto personale è visibile al proprietario', ownerList.body.photos?.[customId]?.mime === 'image/jpeg')
+const otherList = await photoCall('list', b.body.token)
+check('la foto personale non è visibile agli altri', !otherList.body.photos?.[customId])
+const ownerGet = await photoCall('get', a.body.token, { exerciseId: customId })
+check('download della foto personale', ownerGet.status === 200 && ownerGet.body.data === jpeg)
+const ownerDel = await photoCall('delete', a.body.token, { exerciseId: customId })
+check('utente normale rimuove la foto del suo esercizio', ownerDel.status === 200)
+check(
+  'foto personale rimossa',
+  (await photoCall('get', a.body.token, { exerciseId: customId })).status === 404,
+)
 const idx1 = await photoCall('list', adminToken)
 check('indice aggiornato', idx1.body.photos?.['def-panca-piana']?.mime === 'image/jpeg')
 const got = await photoCall('get', adminToken, { exerciseId: 'def-panca-piana' })

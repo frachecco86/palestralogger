@@ -25,12 +25,14 @@ del browser o cambiare telefono non li cancella più.
   visibile in miniatura accanto al nome e salvata anche nel cloud. La pagina **Esercizi** mostra la
   miniatura di ogni esercizio (con riquadro segnaposto se la foto manca) e, aprendo l'esercizio,
   l'immagine in grande.
-- **Ruolo amministratore**: le foto sono una **libreria unica condivisa** fra tutti gli account.
-  Solo l'account amministratore (`francescochecco@gmail.com`, vedi `ADMIN_EMAILS` in
-  `netlify/functions/account.ts` e `photo.ts`) può aggiungerle, sostituirle o rimuoverle, e solo
-  dalla pagina Esercizi: dentro la creazione/modifica di un allenamento sono in sola lettura. Il
-  permesso è verificato dal server, che risponde `403 admin_only` agli altri account; tutti possono
-  leggerle e ne tengono una copia offline.
+- **Ruolo amministratore**: le foto degli esercizi pre-caricati sono una **libreria unica condivisa**
+  fra tutti gli account. Solo l'account amministratore (`francescochecco@gmail.com`, vedi
+  `ADMIN_EMAILS` in `netlify/functions/account.ts` e `photo.ts`) può aggiungerle, sostituirle o
+  rimuoverle; il server risponde `403 admin_only` agli altri account, che possono solo leggerle.
+- **Foto dei propri esercizi**: chi crea un esercizio (id casuale, non `def-*`) può caricarne la foto
+  già nella creazione e gestirla dalla pagina Esercizi, senza essere amministratore. Resta privata
+  nel suo account. In ogni caso le foto si modificano **solo** dalla pagina Esercizi: dentro la
+  creazione/modifica di un allenamento sono in sola lettura.
 - **Peso in un tocco**: in modifica la serie ha «applica a tutte» per copiare i kg su tutte le altre.
 - **Esercizi personalizzati**: creazione al volo dalla ricerca («Crea "xyz"») con gruppo muscolare e
   attrezzatura; eliminabili se non usati.
@@ -103,9 +105,11 @@ palestralogger-social
   u/<uid>                      -> profilo social (codice amico, amici, snapshot)
   code/<codice amico>          -> uid
 palestralogger-photos
-  idx/library                  -> indice della libreria condivisa (metadati + cancellazioni)
+  idx/library                  -> indice della libreria condivisa (esercizi pre-caricati)
   p/library/<esercizio>        -> immagine compressa (JPEG/PNG/WebP)
-  x/library/<esercizio>        -> tombstone di cancellazione
+  idx/<id account>             -> indice delle foto private (esercizi creati dall'utente)
+  p/<id account>/<esercizio>   -> immagine compressa privata
+  x/<library o id account>/<esercizio> -> tombstone di cancellazione
 ```
 
 ## Sincronizzazione

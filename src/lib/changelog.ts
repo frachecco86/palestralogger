@@ -10,6 +10,16 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.3.0',
+    title: 'La foto del tuo nuovo esercizio',
+    items: [
+      'Quando crei un esercizio puoi già scegliere una foto: la vedi in anteprima e viene caricata insieme all’esercizio.',
+      'La foto di un esercizio che hai creato è tua: puoi aggiungerla, sostituirla o rimuoverla dalla pagina Esercizi senza essere amministratore.',
+      'Le immagini degli esercizi pre-caricati restano nella libreria condivisa e le gestisce solo l’amministratore.',
+      'Le foto personali sono private: restano nel tuo account e non sono visibili agli altri utenti.',
+    ],
+  },
+  {
     version: '2.2.0',
     title: 'Immagini degli esercizi, gestite dall’amministratore',
     items: [

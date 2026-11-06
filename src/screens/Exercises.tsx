@@ -11,8 +11,7 @@ import {
   listExercises,
   type ExercisePhoto,
 } from '../db/queries'
-import { addExercisePhoto, removeExercisePhoto, syncPhotos } from '../lib/photo'
-import { getCachedAccount, isAdmin } from '../lib/account'
+import { addExercisePhoto, canManagePhoto, removeExercisePhoto, syncPhotos } from '../lib/photo'
 import { formatDate } from '../lib/dates'
 import { formatKg, formatWeight, plural } from '../lib/format'
 import { toast, useLiveData } from '../lib/live'
@@ -46,10 +45,12 @@ export function ExercisesScreen({
   const [newEquipment, setNewEquipment] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  // Solo l'amministratore può aggiungere, sostituire o rimuovere le foto.
-  const admin = isAdmin(getCachedAccount())
+  // Foto: l'amministratore gestisce quelle della libreria, ogni utente quelle
+  // degli esercizi che ha creato (vedi canManagePhoto).
   const photoInputRef = useRef<HTMLInputElement>(null)
   const photoTarget = useRef<string | null>(null)
+  const newPhotoInputRef = useRef<HTMLInputElement>(null)
+  const [newPhoto, setNewPhoto] = useState<{ file: File; url: string } | null>(null)
 
   function readLocalPhotos(): Record<string, ExercisePhoto> {
     const map: Record<string, ExercisePhoto> = {}
@@ -182,14 +183,48 @@ export function ExercisesScreen({
     setNewMuscle('Altro')
     setNewEquipment('')
     setErr(null)
+    clearNewPhoto()
+  }
+
+  function chooseNewPhoto(file: File) {
+    if (!file.type.startsWith('image/')) {
+      setErr('Il file scelto non è un’immagine')
+      return
+    }
+    setErr(null)
+    setNewPhoto((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url)
+      return { file, url: URL.createObjectURL(file) }
+    })
+  }
+
+  function clearNewPhoto() {
+    setNewPhoto((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url)
+      return null
+    })
   }
 
   function handleCreate() {
+    // il File resta valido anche dopo aver liberato l'anteprima
+    const file = newPhoto?.file ?? null
     try {
       const ex = createExercise(user.id, newName, newMuscle, newEquipment)
       toast('Esercizio aggiunto')
       resetCreate()
       setDetail(ex)
+      if (file) {
+        // compressione e caricamento in background: non bloccano la creazione
+        void addExercisePhoto(user.id, ex.id, file)
+          .then(() => {
+            const photo = getExercisePhoto(user.id, ex.id)
+            if (photo) setPhotos((prev) => ({ ...prev, [ex.id]: photo }))
+            toast('Foto salvata')
+          })
+          .catch((e: unknown) => {
+            toast(e instanceof Error ? e.message : 'Foto non salvata', 'err')
+          })
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Errore')
     }
@@ -317,7 +352,7 @@ export function ExercisesScreen({
           <div className="pb-5">
             <ExercisePhotoLarge photo={photos[detail.id]} name={detail.name} className="h-56" />
 
-            {admin && (
+            {canManagePhoto(detail.id) && (
               <div className="mt-2 flex gap-2">
                 <Button
                   size="sm"
@@ -435,6 +470,18 @@ export function ExercisesScreen({
         }}
       />
 
+      <input
+        ref={newPhotoInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) chooseNewPhoto(file)
+          e.target.value = ''
+        }}
+      />
+
       <Sheet open={creating} onClose={resetCreate} title="Nuovo esercizio">
         <div className="space-y-4 pb-5">
           <Field label="Nome">
@@ -468,6 +515,45 @@ export function ExercisesScreen({
               maxLength={32}
             />
           </Field>
+          <div>
+            <span className="mb-1.5 block text-[12px] font-medium uppercase tracking-wide text-muted">
+              Foto <span className="text-[10.5px] normal-case tracking-normal text-faint">facoltativa</span>
+            </span>
+            {newPhoto ? (
+              <div className="relative overflow-hidden rounded-2xl border border-line bg-surface2">
+                <img src={newPhoto.url} alt="Anteprima foto" className="h-36 w-full object-cover" />
+                <div className="absolute right-2 top-2 flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => newPhotoInputRef.current?.click()}
+                    aria-label="Cambia foto del nuovo esercizio"
+                    className="press flex h-8 w-8 items-center justify-center rounded-lg border border-line2 bg-ink/80 text-lime"
+                  >
+                    <Icon name="camera" size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearNewPhoto}
+                    aria-label="Togli foto del nuovo esercizio"
+                    className="press flex h-8 w-8 items-center justify-center rounded-lg border border-line2 bg-ink/80 text-danger"
+                  >
+                    <Icon name="trash" size={15} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => newPhotoInputRef.current?.click()}
+                aria-label="Aggiungi foto al nuovo esercizio"
+                className="press flex h-24 w-full flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-line2 bg-surface2/40 text-faint hover:text-muted"
+              >
+                <Icon name="camera" size={20} />
+                <span className="text-[11.5px]">Aggiungi una foto</span>
+                <span className="text-[10px] text-faint">Resta nel tuo account</span>
+              </button>
+            )}
+          </div>
           {err && <p className="text-[12.5px] text-danger">{err}</p>}
           <Button size="lg" full onClick={handleCreate} disabled={newName.trim().length < 2}>
             Crea esercizio

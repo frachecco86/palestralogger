@@ -338,6 +338,24 @@ if (buttons().some((b) => aria(b).startsWith('Rimuovi foto')))
 window.document.querySelector('[aria-label="Chiudi"]')?.click()
 await wait(400)
 
+// ogni utente può creare un esercizio con la propria foto
+await clickText('Nuovo')
+await wait(500)
+if (!buttons().some((b) => aria(b).startsWith('Aggiungi foto al nuovo esercizio')))
+  throw new Error('foto mancante nella creazione esercizio')
+const newNameInput = [...window.document.querySelectorAll('input')].find((i) =>
+  String(i.getAttribute('placeholder') || '').includes('Chest press'),
+)
+setValue(newNameInput, 'Pressa sperimentale')
+await wait(250)
+await clickText('Crea esercizio')
+await wait(800)
+if (!body().includes('Pressa sperimentale')) throw new Error('esercizio personalizzato non creato')
+if (!buttons().some((b) => aria(b).startsWith('Aggiungi foto a Pressa sperimentale')))
+  throw new Error('l’autore non può aggiungere la foto del suo esercizio')
+window.document.querySelector('[aria-label="Chiudi"]')?.click()
+await wait(400)
+
 // amici (API mockata; in LIVE richiederebbe account reali)
 if (!LIVE) {
 await clickText('Oggi')
@@ -391,6 +409,13 @@ if (!buttons().some((b) => aria(b).startsWith('Aggiungi foto')))
 window.document.querySelector('[aria-label="Chiudi"]')?.click()
 await wait(300)
 console.log('11a. admin può gestire le foto ok')
+// anche l'amministratore gestisce la foto di un esercizio personalizzato
+await clickText('Pressa sperimentale')
+await wait(600)
+if (!buttons().some((b) => aria(b).startsWith('Aggiungi foto a Pressa sperimentale')))
+  throw new Error('admin non può gestire la foto di un esercizio personalizzato')
+window.document.querySelector('[aria-label="Chiudi"]')?.click()
+await wait(300)
 
 console.log('--- ERRORS ---')
 console.log(errors.length ? errors.join('\n') : '(none)')
