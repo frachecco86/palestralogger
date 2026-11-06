@@ -167,16 +167,29 @@ console.log('1. avvio:', body().slice(0, 60))
 await clickText('Registrati')
 await wait(300)
 const inputs = [...window.document.querySelectorAll('input')]
+// il submit è l'ultimo bottone "Crea account" (il primo è la tab)
+const registerSubmit = () =>
+  [...window.document.querySelectorAll('button')]
+    .filter((b) => (b.textContent || '').replace(/\s+/g, ' ').trim() === 'Crea account')
+    .pop()
+if (!registerSubmit()) throw new Error('bottone crea account non trovato')
+// il pulsante è sempre attivo e spiega cosa manca
+registerSubmit().click()
+await wait(300)
+if (!body().includes('Inserisci un indirizzo email valido'))
+  throw new Error('validazione email non mostrata')
 setValue(inputs[0], 'marco@example.com')
 setValue(inputs[1], 'Marco')
+setValue(inputs[2], 'corta')
+setValue(inputs[3], 'corta')
+await wait(250)
+registerSubmit().click()
+await wait(300)
+if (!body().includes('almeno 8 caratteri')) throw new Error('validazione password non mostrata')
 setValue(inputs[2], 'password123')
 setValue(inputs[3], 'password123')
-// il submit è l'ultimo bottone "Crea account" (il primo è la tab)
-const submit = [...window.document.querySelectorAll('button')]
-  .filter((b) => (b.textContent || '').replace(/\s+/g, ' ').trim() === 'Crea account')
-  .pop()
-if (!submit) throw new Error('bottone crea account non trovato')
-submit.click()
+await wait(250)
+registerSubmit().click()
 await wait(900)
 
 // sheet con il codice di recupero

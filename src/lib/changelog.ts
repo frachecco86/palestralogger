@@ -10,6 +10,15 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.3.1',
+    title: 'Registrazione senza pulsanti bloccati',
+    items: [
+      'Il pulsante «Crea account» ora è sempre attivo: se manca qualcosa l’app dice esattamente cosa (email non valida, nome troppo corto, password di meno di 8 caratteri, password diverse).',
+      'Risolto il caso in cui la compilazione automatica del browser riempiva i campi senza aggiornare l’app: il pulsante restava spento senza spiegazioni.',
+      'Lo stesso vale per «Entra» e «Reimposta password»: messaggi chiari al posto del pulsante disattivato.',
+    ],
+  },
+  {
     version: '2.3.0',
     title: 'La foto del tuo nuovo esercizio',
     items: [

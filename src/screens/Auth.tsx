@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { type RefObject, useRef, useState } from 'react'
 import { Button, Icon, Sheet, cx, inputClass } from '../components/ui'
 import { importDatabaseBytes } from '../db/db'
 import { AccountError, type Account, login, register, resetWithRecovery } from '../lib/account'
@@ -14,12 +14,14 @@ function PasswordField({
   onChange,
   autoComplete,
   placeholder = '••••••••',
+  inputRef,
 }: {
   label: string
   value: string
   onChange: (v: string) => void
   autoComplete?: string
   placeholder?: string
+  inputRef?: RefObject<HTMLInputElement | null>
 }) {
   const [show, setShow] = useState(false)
   return (
@@ -29,6 +31,7 @@ function PasswordField({
       </span>
       <span className="relative block">
         <input
+          ref={inputRef}
           className={cx(inputClass, 'pr-16')}
           type={show ? 'text' : 'password'}
           value={value}
@@ -56,6 +59,7 @@ function TextField({
   type = 'text',
   autoComplete,
   inputMode,
+  inputRef,
 }: {
   label: string
   value: string
@@ -64,6 +68,7 @@ function TextField({
   type?: string
   autoComplete?: string
   inputMode?: 'email' | 'text' | 'numeric'
+  inputRef?: RefObject<HTMLInputElement | null>
 }) {
   return (
     <label className="block">
@@ -71,6 +76,7 @@ function TextField({
         {label}
       </span>
       <input
+        ref={inputRef}
         className={inputClass}
         type={type}
         value={value}
@@ -114,30 +120,77 @@ export function AuthScreen({
   const [copied, setCopied] = useState(false)
   const [importBusy, setImportBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  // I ref servono a leggere i valori realmente scritti nei campi: alcune
+  // compilazioni automatiche del browser non passano da onChange, lasciando lo
+  // stato React vuoto e il pulsante (prima) disattivato senza spiegazioni.
+  const emailRef = useRef<HTMLInputElement>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
+  const confirmRef = useRef<HTMLInputElement>(null)
+  const codeRef = useRef<HTMLInputElement>(null)
+  const newPasswordRef = useRef<HTMLInputElement>(null)
 
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())
-  const canLogin = emailValid && password.length >= 8 && !busy
-  const canRegister =
-    emailValid && password.length >= 8 && confirm === password && name.trim().length >= 2 && !busy
-  const canRecover =
-    emailValid && code.replace(/[^A-Za-z0-9]/g, '').length === 16 && newPassword.length >= 8 && !busy
+  /** Legge i campi dal DOM e allinea lo stato; restituisce i valori correnti. */
+  function readFields() {
+    const values = {
+      email: (emailRef.current?.value ?? email).trim(),
+      name: (nameRef.current?.value ?? name).trim(),
+      password: passwordRef.current?.value ?? password,
+      confirm: confirmRef.current?.value ?? confirm,
+      code: (codeRef.current?.value ?? code).replace(/[^A-Za-z0-9]/g, ''),
+      newPassword: newPasswordRef.current?.value ?? newPassword,
+    }
+    if (values.email !== email) setEmail(values.email)
+    if (values.name !== name) setName(values.name)
+    if (values.password !== password) setPassword(values.password)
+    if (values.confirm !== confirm) setConfirm(values.confirm)
+    if (values.newPassword !== newPassword) setNewPassword(values.newPassword)
+    return values
+  }
 
   async function submit() {
     setError(null)
+    const v = readFields()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.email)) {
+      setError('Inserisci un indirizzo email valido, es. nome@dominio.it')
+      return
+    }
+    if (mode === 'register' && v.name.length < 2) {
+      setError('Il nome profilo deve avere almeno 2 lettere')
+      return
+    }
+    if (mode !== 'recover' && v.password.length < 8) {
+      setError('La password deve avere almeno 8 caratteri')
+      return
+    }
+    if (mode === 'register' && v.confirm !== v.password) {
+      setError('Le due password non coincidono')
+      return
+    }
+    if (mode === 'recover') {
+      if (v.code.length !== 16) {
+        setError('Il codice di recupero ha 16 caratteri (4 gruppi da 4)')
+        return
+      }
+      if (v.newPassword.length < 8) {
+        setError('La nuova password deve avere almeno 8 caratteri')
+        return
+      }
+    }
+
     setBusy(true)
     try {
       if (mode === 'login') {
-        const res = await login(email.trim(), password)
+        const res = await login(v.email, v.password)
         onAuthenticated(res.account)
         return
       }
       if (mode === 'register') {
-        if (confirm !== password) throw new Error('Le due password non coincidono')
-        const res = await register(email.trim(), password, name.trim())
+        const res = await register(v.email, v.password, v.name)
         setCreated({ account: res.account, recoveryCode: res.recoveryCode })
         return
       }
-      const res = await resetWithRecovery(email.trim(), code, newPassword)
+      const res = await resetWithRecovery(v.email, v.code, v.newPassword)
       setCreated({ account: res.account, recoveryCode: res.recoveryCode })
       toast('Password aggiornata')
     } catch (err) {
@@ -240,6 +293,7 @@ export function AuthScreen({
           <h2 className="text-[15px] font-semibold">{title}</h2>
 
           <TextField
+            inputRef={emailRef}
             label="Email"
             value={email}
             onChange={setEmail}
@@ -251,6 +305,7 @@ export function AuthScreen({
 
           {mode === 'register' && (
             <TextField
+              inputRef={nameRef}
               label="Nome profilo"
               value={name}
               onChange={setName}
@@ -262,6 +317,7 @@ export function AuthScreen({
           {mode === 'recover' ? (
             <>
               <TextField
+                inputRef={codeRef}
                 label="Codice di recupero"
                 value={code}
                 onChange={(v) =>
@@ -277,6 +333,7 @@ export function AuthScreen({
                 autoComplete="one-time-code"
               />
               <PasswordField
+                inputRef={newPasswordRef}
                 label="Nuova password"
                 value={newPassword}
                 onChange={setNewPassword}
@@ -286,6 +343,7 @@ export function AuthScreen({
           ) : (
             <>
               <PasswordField
+                inputRef={passwordRef}
                 label="Password"
                 value={password}
                 onChange={setPassword}
@@ -293,6 +351,7 @@ export function AuthScreen({
               />
               {mode === 'register' && (
                 <PasswordField
+                  inputRef={confirmRef}
                   label="Ripeti password"
                   value={confirm}
                   onChange={setConfirm}
@@ -311,7 +370,7 @@ export function AuthScreen({
           <Button
             size="lg"
             full
-            disabled={mode === 'login' ? !canLogin : mode === 'register' ? !canRegister : !canRecover}
+            disabled={busy}
             onClick={() => void submit()}
           >
             {busy
