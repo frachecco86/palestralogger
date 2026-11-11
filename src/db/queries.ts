@@ -95,6 +95,7 @@ export function renameUser(userId: string, name: string): void {
 
 export function deleteUser(userId: string): void {
   tx((db) => {
+    db.run('DELETE FROM workout_entry_notes WHERE workout_id IN (SELECT id FROM workouts WHERE user_id = ?)', [userId])
     db.run('DELETE FROM workout_sets WHERE workout_id IN (SELECT id FROM workouts WHERE user_id = ?)', [userId])
     db.run('DELETE FROM workouts WHERE user_id = ?', [userId])
     db.run('DELETE FROM exercise_photos WHERE user_id = ?', [userId])
@@ -108,6 +109,7 @@ export function deleteUser(userId: string): void {
 export function resetLocalData(): void {
   tx((db) => {
     db.run('DELETE FROM exercise_photos')
+    db.run('DELETE FROM workout_entry_notes')
     db.run('DELETE FROM workout_sets')
     db.run('DELETE FROM workouts')
     db.run('DELETE FROM exercises WHERE user_id IS NOT NULL')
@@ -163,6 +165,10 @@ export function adoptLocalData(accountId: string, name: string): boolean {
       d.run('UPDATE exercises SET user_id = ? WHERE user_id = ?', [accountId, source.id])
       d.run('UPDATE deleted_records SET user_id = ? WHERE user_id = ?', [accountId, source.id])
       d.run('UPDATE exercise_photos SET user_id = ? WHERE user_id = ?', [accountId, source.id])
+      d.run(
+        'DELETE FROM workout_entry_notes WHERE workout_id IN (SELECT id FROM workouts WHERE user_id <> ?)',
+        [accountId],
+      )
       d.run(
         'DELETE FROM workout_sets WHERE workout_id IN (SELECT id FROM workouts WHERE user_id <> ?)',
         [accountId],
@@ -369,6 +375,12 @@ export function getWorkout(userId: string, workoutId: string): WorkoutDetail | n
     [workoutId],
   )
 
+  const noteRows = query<{ entry_index: number; note: string }>(
+    'SELECT entry_index, note FROM workout_entry_notes WHERE workout_id = ?',
+    [workoutId],
+  )
+  const noteByEntry = new Map(noteRows.map((r) => [r.entry_index, r.note]))
+
   const exercises = listExercises(userId)
   const byId = new Map(exercises.map((e) => [e.id, e]))
   const entries: WorkoutDetail['entries'] = []
@@ -385,8 +397,10 @@ export function getWorkout(userId: string, workoutId: string): WorkoutDetail | n
         createdAt: '',
         updatedAt: '',
       }
-      entry = { exercise, sets: [] }
+      entry = { exercise, notes: noteByEntry.get(row.entry_index) ?? '', sets: [] }
       entries.push(entry)
+    } else if (!entry.notes) {
+      entry.notes = noteByEntry.get(row.entry_index) ?? ''
     }
     entry.sets.push({
       id: row.id,
@@ -407,6 +421,9 @@ export function getWorkout(userId: string, workoutId: string): WorkoutDetail | n
     entries,
   }
 }
+
+/** Limite di caratteri per le note di un esercizio. */
+export const MAX_ENTRY_NOTE = 300
 
 export interface SaveWorkoutInput {
   id?: string
@@ -453,11 +470,18 @@ export function saveWorkout(userId: string, input: SaveWorkoutInput): string {
       )
     }
 
+    db.run('DELETE FROM workout_entry_notes WHERE workout_id = ?', [workoutId])
+
+    const noteStmt = db.prepare(
+      'INSERT INTO workout_entry_notes (workout_id, exercise_id, entry_index, note) VALUES (?, ?, ?, ?)',
+    )
     const stmt = db.prepare(
       'INSERT INTO workout_sets (id, workout_id, exercise_id, entry_index, set_index, reps, weight, rpe) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     )
     try {
       entries.forEach((entry, entryIndex) => {
+        const note = (entry.notes ?? '').trim().slice(0, MAX_ENTRY_NOTE)
+        if (note) noteStmt.run([workoutId, entry.exerciseId, entryIndex, note])
         entry.sets.forEach((set, setIndex) => {
           stmt.run([
             newId(),
@@ -473,6 +497,7 @@ export function saveWorkout(userId: string, input: SaveWorkoutInput): string {
       })
     } finally {
       stmt.free()
+      noteStmt.free()
     }
   })
 
@@ -481,6 +506,7 @@ export function saveWorkout(userId: string, input: SaveWorkoutInput): string {
 
 export function deleteWorkout(userId: string, workoutId: string): void {
   tx((db) => {
+    db.run('DELETE FROM workout_entry_notes WHERE workout_id = ?', [workoutId])
     db.run('DELETE FROM workout_sets WHERE workout_id = ?', [workoutId])
     db.run('DELETE FROM workouts WHERE id = ? AND user_id = ?', [workoutId, userId])
     db.run(

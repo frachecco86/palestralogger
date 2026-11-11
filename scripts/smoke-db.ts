@@ -47,6 +47,7 @@ async function main() {
     entries: [
       {
         exerciseId: 'def-panca-piana',
+        notes: 'Presa larga, spalle basse',
         sets: [
           { reps: 10, weight: 80 },
           { reps: 8, weight: 85 },
@@ -64,6 +65,49 @@ async function main() {
   console.log('dettaglio: esercizi', detail.entries.length, 'serie', detail.sets, 'volume', detail.volume)
   if (detail.volume !== 80 * 10 + 85 * 8 + 90 * 6 + 140 * 12 + 40 * 15) throw new Error('volume errato')
   if (detail.entries[0].sets.length !== 3) throw new Error('serie perse')
+  console.log('note esercizio:', JSON.stringify(detail.entries[0].notes), '| senza nota:', JSON.stringify(detail.entries[1].notes))
+  if (detail.entries[0].notes !== 'Presa larga, spalle basse') throw new Error('nota esercizio persa')
+  if (detail.entries[1].notes !== '') throw new Error('nota esercizio inventata')
+
+  // aggiornando l'allenamento la nota si modifica e si può svuotare
+  saveWorkout(user.id, {
+    id,
+    date: '2026-10-24',
+    name: 'Push A',
+    notes: 'buone sensazioni',
+    entries: [
+      { exerciseId: 'def-panca-piana', notes: '  Presa stretta  ', sets: [{ reps: 10, weight: 80 }] },
+      { exerciseId: 'def-leg-press', notes: '', sets: [{ reps: 12, weight: 140 }] },
+      { exerciseId: custom.id, sets: [{ reps: 15, weight: 40 }] },
+    ],
+  })
+  const edited = getWorkout(user.id, id)
+  if (edited?.entries[0].notes !== 'Presa stretta') {
+    throw new Error('nota esercizio non aggiornata: ' + JSON.stringify(edited?.entries[0].notes))
+  }
+  if (edited.entries.some((e) => e.notes !== '' && e.exercise.id !== 'def-panca-piana')) {
+    throw new Error('nota rimasta su un altro esercizio')
+  }
+  // ripristino i contenuti originali per i controlli successivi
+  saveWorkout(user.id, {
+    id,
+    date: '2026-10-24',
+    name: 'Push A',
+    notes: 'buone sensazioni',
+    entries: [
+      {
+        exerciseId: 'def-panca-piana',
+        notes: 'Presa larga, spalle basse',
+        sets: [
+          { reps: 10, weight: 80 },
+          { reps: 8, weight: 85 },
+          { reps: 6, weight: 90 },
+        ],
+      },
+      { exerciseId: 'def-leg-press', sets: [{ reps: 12, weight: 140 }] },
+      { exerciseId: custom.id, sets: [{ reps: 15, weight: 40 }] },
+    ],
+  })
 
   const list = listWorkouts(user.id)
   console.log('lista allenamenti:', list.map((w) => [w.date, w.name, w.sets, w.volume, w.muscles]))
@@ -198,6 +242,11 @@ async function smokeSync() {
             rpe: 8,
           })),
         ),
+        entryNotes: base.entries.map((entry, entryIndex) => ({
+          exerciseId: entry.exercise.id,
+          entryIndex,
+          note: entryIndex === 0 ? 'Nota remota sulla panca' : '',
+        })),
       },
       {
         id: remoteNewId,
@@ -229,6 +278,10 @@ async function smokeSync() {
   console.log('merge workout aggiornato:', updated?.name, updated?.notes, updated?.sets, updated?.volume)
   if (updated?.name !== 'Aggiornato dal telefono') throw new Error('merge non ha applicato il remoto più recente')
   if (updated?.volume !== 1 * 12 * 110) throw new Error('serie remote non applicate')
+  if (updated?.entries[0].notes !== 'Nota remota sulla panca') throw new Error('note esercizio remote non applicate')
+  if (merged.workouts.find((w) => w.id === localId)?.entryNotes?.length !== 1) {
+    throw new Error('note esercizio non propagate nel payload')
+  }
   if (getWorkout(user.id, remoteNewId) === null) throw new Error('workout remoto non importato')
   if (getWorkout(user.id, doomedId) !== null) throw new Error('tombstone non applicato')
   if (!merged.exercises.some((e) => e.id === remoteExerciseId)) throw new Error('esercizio remoto non importato')

@@ -10,6 +10,16 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.5.0',
+    title: 'Una nota per ogni esercizio',
+    items: [
+      'Ogni esercizio dell’allenamento ha ora il suo campo note: scrivi tecnica, presa, sensazioni o fastidi senza mescolarli con le note della sessione.',
+      'Le note dell’esercizio si scrivono in modalità «Modifica» e restano leggibili sotto le serie quando l’allenamento è in sola lettura.',
+      'Con gli esercizi compressi la nota compare in anteprima sotto il nome: la vedi senza aprire la scheda.',
+      'Le note viaggiano con l’allenamento: vengono salvate nel cloud e sincronizzate sugli altri dispositivi insieme alle serie.',
+    ],
+  },
+  {
     version: '2.4.0',
     title: 'L’immagine dell’allenamento, in due versioni',
     items: [

@@ -32,6 +32,12 @@ export interface SyncSet {
   rpe: number | null
 }
 
+export interface SyncEntryNote {
+  exerciseId: string
+  entryIndex: number
+  note: string
+}
+
 export interface SyncWorkout {
   id: string
   date: string
@@ -40,6 +46,8 @@ export interface SyncWorkout {
   createdAt: string
   updatedAt: string
   sets: SyncSet[]
+  /** Note per esercizio; assente nei payload creati prima della 2.5.0. */
+  entryNotes?: SyncEntryNote[]
 }
 
 export interface SyncTombstone {
@@ -93,6 +101,13 @@ interface RawSet {
   rpe: number | null
 }
 
+interface RawEntryNote {
+  workout_id: string
+  exercise_id: string
+  entry_index: number
+  note: string
+}
+
 interface RawTombstone {
   kind: 'workout' | 'exercise'
   record_id: string
@@ -144,6 +159,20 @@ export function buildSyncPayload(userId: string): SyncPayload {
     setsByWorkout.set(s.workout_id, list)
   }
 
+  const noteRows = query<RawEntryNote>(
+    `SELECT n.* FROM workout_entry_notes n
+     JOIN workouts w ON w.id = n.workout_id
+     WHERE w.user_id = ?
+     ORDER BY n.entry_index ASC`,
+    [userId],
+  )
+  const notesByWorkout = new Map<string, SyncEntryNote[]>()
+  for (const n of noteRows) {
+    const list = notesByWorkout.get(n.workout_id) ?? []
+    list.push({ exerciseId: n.exercise_id, entryIndex: n.entry_index, note: n.note })
+    notesByWorkout.set(n.workout_id, list)
+  }
+
   const tombstones = query<RawTombstone>(
     'SELECT kind, record_id, deleted_at FROM deleted_records WHERE user_id = ? AND deleted_at >= ?',
     [userId, addDays(todayISO(), -TOMBSTONE_TTL_DAYS)],
@@ -166,6 +195,7 @@ export function buildSyncPayload(userId: string): SyncPayload {
       createdAt: w.created_at,
       updatedAt: w.updated_at,
       sets: setsByWorkout.get(w.id) ?? [],
+      entryNotes: notesByWorkout.get(w.id) ?? [],
     })),
     tombstones,
     savedAt: new Date().toISOString(),
@@ -226,6 +256,7 @@ export function applySyncPayload(userId: string, remote: SyncPayload | null): Sy
         if (localTomb && localTomb >= t.deletedAt) continue
         if (updatedAt && updatedAt > t.deletedAt) continue // locale più recente: vince
         if (t.kind === 'workout') {
+          db.run('DELETE FROM workout_entry_notes WHERE workout_id = ?', [t.id])
           db.run('DELETE FROM workout_sets WHERE workout_id = ?', [t.id])
           db.run('DELETE FROM workouts WHERE id = ? AND user_id = ?', [t.id, userId])
         } else {
@@ -266,7 +297,17 @@ export function applySyncPayload(userId: string, remote: SyncPayload | null): Sy
              updated_at = excluded.updated_at`,
           [w.id, userId, w.date, w.name ?? '', w.notes ?? '', w.createdAt, w.updatedAt],
         )
+        db.run('DELETE FROM workout_entry_notes WHERE workout_id = ?', [w.id])
         db.run('DELETE FROM workout_sets WHERE workout_id = ?', [w.id])
+        for (const n of w.entryNotes ?? []) {
+          const note = typeof n.note === 'string' ? n.note.trim().slice(0, 300) : ''
+          if (!note) continue
+          db.run(
+            `INSERT OR REPLACE INTO workout_entry_notes (workout_id, exercise_id, entry_index, note)
+             VALUES (?, ?, ?, ?)`,
+            [w.id, n.exerciseId, Math.max(0, Math.round(n.entryIndex ?? 0)), note],
+          )
+        }
         for (const s of w.sets ?? []) {
           const exercise = queryOne<{ id: string }>('SELECT id FROM exercises WHERE id = ?', [
             s.exerciseId,

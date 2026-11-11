@@ -47,6 +47,17 @@ CREATE TABLE IF NOT EXISTS workout_sets (
   FOREIGN KEY (exercise_id) REFERENCES exercises(id)
 );
 
+-- Note per singolo esercizio dell'allenamento (una riga per esercizio/serie di esercizi).
+-- Stanno in una tabella dedicata: le serie restano dati numerici puri.
+CREATE TABLE IF NOT EXISTS workout_entry_notes (
+  workout_id TEXT NOT NULL,
+  exercise_id TEXT NOT NULL,
+  entry_index INTEGER NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (workout_id, entry_index),
+  FOREIGN KEY (workout_id) REFERENCES workouts(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS exercise_photos (
   user_id TEXT NOT NULL,
   exercise_id TEXT NOT NULL,
@@ -61,6 +72,7 @@ CREATE INDEX IF NOT EXISTS idx_photos_user ON exercise_photos(user_id);
 CREATE INDEX IF NOT EXISTS idx_workouts_user_date ON workouts(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_sets_workout ON workout_sets(workout_id);
 CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);
+CREATE INDEX IF NOT EXISTS idx_entry_notes_workout ON workout_entry_notes(workout_id);
 CREATE INDEX IF NOT EXISTS idx_exercises_user ON exercises(user_id);
 
 CREATE TABLE IF NOT EXISTS deleted_records (

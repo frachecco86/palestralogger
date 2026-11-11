@@ -83,6 +83,8 @@ export interface WorkoutSummary extends Workout {
 
 export interface WorkoutEntryInput {
   exerciseId: string
+  /** Note libere sull'esercizio (tecnica, sensazioni, presa…). */
+  notes?: string
   sets: Array<{ reps: number; weight: number; rpe?: number | null }>
 }
 
@@ -93,6 +95,7 @@ export interface WorkoutDetail extends Workout {
   muscles: string
   entries: Array<{
     exercise: Exercise
+    notes: string
     sets: Array<{ id: string; setIndex: number; reps: number; weight: number; rpe: number | null }>
   }>
 }

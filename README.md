@@ -16,8 +16,10 @@ del browser o cambiare telefono non li cancella più.
 - **Offline-first**: in palestra l'app funziona senza rete; le modifiche si allineano appena torna
   il segnale (in background, senza bloccare l'interfaccia).
 - **Nuovo allenamento**: data, titolo opzionale, note ed esercizi con serie (ripetizioni × peso,
-  incrementi da 2,5 kg). Gli esercizi di un allenamento salvato restano compressi (si aprono con la
-  freccia) e la cancellazione di esercizi/serie richiede la modalità «Modifica».
+  incrementi da 2,5 kg). Ogni esercizio ha un suo campo **note** (tecnica, sensazioni, presa,
+  fastidi…): si scrive in modalità «Modifica», resta visibile in lettura e viene sincronizzato nel
+  cloud. Gli esercizi di un allenamento salvato restano compressi (si aprono con la freccia) e la
+  cancellazione di esercizi/serie richiede la modalità «Modifica».
 - **Libreria esercizi**: ~60 esercizi principali pre-caricati (panca piana, leg press, squat, stacco,
   lat machine, trazioni, military press, curl, hip thrust, plank, cardio…), ricerca con
   autocompletamento per nome e attrezzatura, filtro per gruppo muscolare.
@@ -87,6 +89,7 @@ users(id, name, created_at, updated_at,          -- id = id dell'account
 exercises(id, user_id?, name, muscle, equipment, is_default, created_at, updated_at)
 workouts(id, user_id, date, name, notes, created_at, updated_at)
 workout_sets(id, workout_id, exercise_id, entry_index, set_index, reps, weight, rpe)
+workout_entry_notes(workout_id, exercise_id, entry_index, note)  -- note per esercizio (2.5.0)
 deleted_records(kind, record_id, user_id, deleted_at)   -- tombstone per le cancellazioni
 ```
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Exercise, WorkoutEntryInput } from '../lib/types'
 import { MUSCLE_COLORS } from '../lib/types'
 import {
+  MAX_ENTRY_NOTE,
   deleteWorkout,
   getExercise,
   getExercisePhoto,
@@ -28,6 +29,7 @@ interface EditorSet {
 interface EditorEntry {
   key: string
   exercise: Exercise
+  notes: string
   sets: EditorSet[]
   lastHint?: string
 }
@@ -139,6 +141,7 @@ export function WorkoutEditor({
     (loaded?.entries ?? []).map((e) => ({
       key: key(),
       exercise: e.exercise,
+      notes: e.notes ?? '',
       sets: e.sets.map((s) => ({ key: key(), reps: s.reps, weight: s.weight })),
     })),
   )
@@ -191,6 +194,7 @@ export function WorkoutEditor({
       notes: loaded.notes,
       entries: loaded.entries.map((e) => ({
         id: e.exercise.id,
+        notes: e.notes,
         sets: e.sets.map((s) => [s.reps, s.weight]),
       })),
     })
@@ -200,6 +204,7 @@ export function WorkoutEditor({
       notes,
       entries: entries.map((e) => ({
         id: e.exercise.id,
+        notes: e.notes,
         sets: e.sets.map((s) => [s.reps, s.weight]),
       })),
     })
@@ -227,6 +232,7 @@ export function WorkoutEditor({
       {
         key: key(),
         exercise,
+        notes: '',
         sets: baseSets.map((s) => ({ key: key(), reps: s.reps, weight: s.weight })),
         lastHint: last && last.date !== date
           ? `Ultima volta ${formatDate(last.date)}: ${last.sets
@@ -303,6 +309,7 @@ export function WorkoutEditor({
     setError(null)
     const payload: WorkoutEntryInput[] = entries.map((e) => ({
       exerciseId: e.exercise.id,
+      notes: e.notes,
       sets: e.sets.map((s) => ({ reps: s.reps, weight: s.weight })),
     }))
     if (payload.length === 0) {
@@ -430,6 +437,7 @@ export function WorkoutEditor({
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
               maxLength={500}
+              aria-label="Note della sessione"
               placeholder="Come è andata? Recupero, tecnica, sensazioni…"
               className="w-full resize-none rounded-xl bg-surface2 border border-line2 px-3 py-2.5 text-[13px] outline-none placeholder:text-faint focus:border-lime/50"
             />
@@ -503,6 +511,12 @@ export function WorkoutEditor({
                     {entry.exercise.muscle}
                     {entry.exercise.equipment ? ` · ${entry.exercise.equipment}` : ''}
                   </p>
+                  {collapsed.has(entry.key) && entry.notes.trim() !== '' && (
+                    <p className="flex items-center gap-1 text-[10.5px] text-muted">
+                      <Icon name="edit" size={10} className="shrink-0 text-lime/80" />
+                      <span className="truncate">{entry.notes}</span>
+                    </p>
+                  )}
                 </button>
 
                 {collapsed.has(entry.key) && (
@@ -655,6 +669,33 @@ export function WorkoutEditor({
                   >
                     <Icon name="plus" size={13} /> Aggiungi serie
                   </button>
+                )}
+
+                {/* note dell'esercizio: modificabili in modalità modifica */}
+                {editMode ? (
+                  <div className="mt-2">
+                    <div className="mb-1 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-faint">
+                      <Icon name="edit" size={11} /> Note esercizio
+                    </div>
+                    <textarea
+                      value={entry.notes}
+                      onChange={(e) =>
+                        updateEntry(entry.key, (en) => ({ ...en, notes: e.target.value }))
+                      }
+                      rows={2}
+                      maxLength={MAX_ENTRY_NOTE}
+                      aria-label={`Note ${entry.exercise.name}`}
+                      placeholder="Tecnica, sensazioni, presa, fastidi…"
+                      className="w-full resize-none rounded-xl bg-surface2 border border-line2 px-2.5 py-2 text-[12px] outline-none placeholder:text-faint focus:border-lime/50"
+                    />
+                  </div>
+                ) : (
+                  entry.notes.trim() !== '' && (
+                    <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-line bg-surface2/50 px-2.5 py-2 text-[11.5px] leading-relaxed text-muted">
+                      <Icon name="edit" size={12} className="mt-0.5 shrink-0 text-lime" />
+                      <span className="whitespace-pre-wrap break-words">{entry.notes}</span>
+                    </p>
+                  )
                 )}
               </div>
               )}
