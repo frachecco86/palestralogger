@@ -10,6 +10,16 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.10.1',
+    title: 'Riordina trascinando gli esercizi',
+    items: [
+      'Le frecce piccole sono state sostituite da una maniglia: in modalità «Modifica» tieni premuto e trascina l’esercizio su o giù.',
+      'L’ordine si aggiorna mentre trascini, con una leggera evidenziazione dell’esercizio che stai spostando; poi tocca «Aggiorna».',
+      'La maniglia funziona anche con la tastiera: frecce su e giù per spostare l’esercizio di una posizione.',
+      'Serie e note seguono l’esercizio, e l’ordine resta salvato e sincronizzato come prima.',
+    ],
+  },
+  {
     version: '2.10.0',
     title: 'Gli esercizi, nell’ordine che vuoi',
     items: [

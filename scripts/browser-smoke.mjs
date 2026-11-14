@@ -469,13 +469,41 @@ const exerciseOrder = () =>
   )
 if (exerciseOrder()[0] !== 'Panca piana')
   throw new Error('ordine iniziale inatteso: ' + exerciseOrder().join(', '))
-const moveDown = buttons().find((b) => aria(b) === 'Sposta giù Panca piana')
-if (!moveDown) throw new Error('comando «Sposta giù» mancante')
-moveDown.click()
-await wait(400)
+
+// trascinamento dalla maniglia (niente più frecce)
+if (buttons().some((b) => aria(b).startsWith('Sposta giù ') || aria(b).startsWith('Sposta su ')))
+  throw new Error('frecce di riordino ancora presenti')
+const grip = window.document.querySelector('[aria-label="Trascina per riordinare Panca piana"]')
+if (!grip) throw new Error('maniglia di trascinamento mancante')
+const rowNodes = [...window.document.querySelectorAll('[data-workout-row]')]
+if (rowNodes.length !== 2) throw new Error('righe esercizio inattese: ' + rowNodes.length)
+// happy-dom non calcola il layout: diamo posizioni finte alle due righe
+rowNodes.forEach((node, index) => {
+  node.getBoundingClientRect = () => ({
+    top: index * 100,
+    bottom: index * 100 + 90,
+    height: 90,
+    left: 0,
+    right: 300,
+    width: 300,
+    x: 0,
+    y: index * 100,
+    toJSON() {},
+  })
+})
+const pointer = (type, clientY) => {
+  const Ctor = window.PointerEvent || window.MouseEvent
+  grip.dispatchEvent(
+    new Ctor(type, { bubbles: true, cancelable: true, clientY, pointerId: 1 }),
+  )
+}
+pointer('pointerdown', 60)
+pointer('pointermove', 260)
+pointer('pointerup', 260)
+await wait(500)
 if (exerciseOrder()[0] !== 'Rematore Kayak')
-  throw new Error('riordino non applicato: ' + exerciseOrder().join(', '))
-console.log('6f. riordino esercizi ok')
+  throw new Error('riordino con trascinamento non applicato: ' + exerciseOrder().join(', '))
+console.log('6f. riordino con trascinamento ok')
 
 // esco senza salvare: l'allenamento importato resta com'era
 window.document.querySelector('[aria-label="Torna indietro"]')?.click()

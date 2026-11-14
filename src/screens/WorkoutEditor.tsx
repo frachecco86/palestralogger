@@ -193,6 +193,10 @@ export function WorkoutEditor({
   const [shareOpen, setShareOpen] = useState(false)
   const [shareUserOpen, setShareUserOpen] = useState(false)
   const [cloning, setCloning] = useState(false)
+  // Trascinamento degli esercizi (in modalità modifica)
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const dragKeyRef = useRef<string | null>(null)
+  const [dragKey, setDragKey] = useState<string | null>(null)
 
   const totalSets = entries.reduce((s, e) => s + e.sets.length, 0)
   const totalVolume = entries.reduce(
@@ -306,6 +310,71 @@ export function WorkoutEditor({
       next.splice(target, 0, moved)
       return next
     })
+  }
+
+  function moveEntryTo(entryKey: string, targetIndex: number) {
+    setEntries((prev) => {
+      const from = prev.findIndex((e) => e.key === entryKey)
+      const target = Math.min(prev.length - 1, Math.max(0, targetIndex))
+      if (from < 0 || from === target) return prev
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      next.splice(target, 0, moved)
+      return next
+    })
+  }
+
+  function startDrag(event: React.PointerEvent<HTMLButtonElement>, entryKey: string) {
+    if (!editMode) return
+    event.stopPropagation()
+    dragKeyRef.current = entryKey
+    setDragKey(entryKey)
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {
+      /* pointer capture non disponibile */
+    }
+  }
+
+  /** Riordina al volo in base alla posizione del dito rispetto ai vari esercizi. */
+  function dragOver(event: React.PointerEvent<HTMLButtonElement>) {
+    const draggedKey = dragKeyRef.current
+    if (!draggedKey) return
+    event.preventDefault()
+    const list = entries
+    const index = list.findIndex((entry) => entry.key === draggedKey)
+    if (index < 0) return
+    const centers: number[] = []
+    for (const entry of list) {
+      const node = rowRefs.current.get(entry.key)
+      if (!node) return
+      const rect = node.getBoundingClientRect()
+      centers.push(rect.top + rect.height / 2)
+    }
+    let insertAt = 0
+    for (let i = 0; i < centers.length; i++) {
+      if (event.clientY > centers[i]) insertAt = i + 1
+    }
+    if (insertAt > index) insertAt -= 1
+    if (insertAt !== index) moveEntryTo(draggedKey, insertAt)
+  }
+
+  function endDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    if (!dragKeyRef.current) return
+    dragKeyRef.current = null
+    setDragKey(null)
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch {
+      /* pointer capture non disponibile */
+    }
+  }
+
+  /** Tastiera (e screen reader): frecce su/giù sulla maniglia. */
+  function dragKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, entryKey: string) {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+    event.preventDefault()
+    moveEntry(entryKey, event.key === 'ArrowUp' ? -1 : 1)
   }
 
   function toggleCollapsed(entryKey: string) {
@@ -563,13 +632,27 @@ export function WorkoutEditor({
         </div>
         {editMode && loaded && (
           <p className="mt-2 rounded-lg border border-danger/25 bg-danger/[0.07] px-2.5 py-1.5 text-[10.5px] leading-relaxed text-danger">
-            Modalità modifica attiva: il cestino rimuove l’esercizio, la × toglie una serie.
+            Modalità modifica attiva: trascina dalla maniglia per riordinare, il cestino rimuove
+            l’esercizio, la × toglie una serie.
           </p>
         )}
 
         <div className="mt-2.5 space-y-2.5">
           {entries.map((entry) => (
-            <Card key={entry.key} className="overflow-hidden">
+            <div
+              key={entry.key}
+              data-workout-row={entry.key}
+              ref={(node) => {
+                if (node) rowRefs.current.set(entry.key, node)
+                else rowRefs.current.delete(entry.key)
+              }}
+            >
+            <Card
+              className={cx(
+                'overflow-hidden transition-opacity',
+                dragKey === entry.key && 'opacity-70 ring-1 ring-lime/40',
+              )}
+            >
               <div
                 className={cx(
                   'flex items-center gap-2 px-3',
@@ -622,28 +705,21 @@ export function WorkoutEditor({
                 )}
 
                 {editMode && entries.length > 1 && (
-                  <div className="flex shrink-0 flex-col items-center">
-                    <button
-                      type="button"
-                      onClick={() => moveEntry(entry.key, -1)}
-                      disabled={entries[0]?.key === entry.key}
-                      className="press flex h-4 w-5 items-center justify-center rounded text-faint hover:text-lime disabled:opacity-20"
-                      aria-label={`Sposta su ${entry.exercise.name}`}
-                      title="Sposta su"
-                    >
-                      <Icon name="down" size={12} className="rotate-180" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moveEntry(entry.key, 1)}
-                      disabled={entries[entries.length - 1]?.key === entry.key}
-                      className="press flex h-4 w-5 items-center justify-center rounded text-faint hover:text-lime disabled:opacity-20"
-                      aria-label={`Sposta giù ${entry.exercise.name}`}
-                      title="Sposta giù"
-                    >
-                      <Icon name="down" size={12} />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Trascina per riordinare ${entry.exercise.name}`}
+                    title="Trascina per riordinare"
+                    aria-keyshortcuts="ArrowUp ArrowDown"
+                    onPointerDown={(e) => startDrag(e, entry.key)}
+                    onPointerMove={dragOver}
+                    onPointerUp={endDrag}
+                    onPointerCancel={endDrag}
+                    onKeyDown={(e) => dragKeyDown(e, entry.key)}
+                    onContextMenu={(e) => e.preventDefault()}
+                    className="press flex h-8 w-6 shrink-0 touch-none cursor-grab select-none items-center justify-center rounded-lg text-faint hover:text-lime active:cursor-grabbing"
+                  >
+                    <Icon name="grip" size={15} />
+                  </button>
                 )}
 
                 {editMode && (
@@ -833,6 +909,7 @@ export function WorkoutEditor({
               </div>
               )}
             </Card>
+            </div>
           ))}
         </div>
 

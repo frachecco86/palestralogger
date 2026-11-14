@@ -44,6 +44,7 @@ export type IconName =
   | 'users'
   | 'share'
   | 'camera'
+  | 'grip'
 
 const PATHS: Record<IconName, ReactNode> = {
   home: <path d="M3.5 10.5 12 3.5l8.5 7M5.5 9.5V20h13V9.5" />,
@@ -139,6 +140,16 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M3 9h3.2l1.5-2.6h8.6L17.8 9H21v10.5H3z" />
       <circle cx="12" cy="14" r="3.4" />
+    </>
+  ),
+  grip: (
+    <>
+      <circle cx="9" cy="6" r="1.35" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="6" r="1.35" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="12" r="1.35" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r="1.35" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="18" r="1.35" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="18" r="1.35" fill="currentColor" stroke="none" />
     </>
   ),
 }
