@@ -10,6 +10,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.7.0',
+    title: 'Gli esercizi sono di tutti',
+    items: [
+      'I nuovi esercizi che crei entrano nella libreria comune: li vedono e li usano tutti gli account, su ogni dispositivo.',
+      'Nel form di creazione c’è l’interruttore «Disponibile a tutti», già acceso: puoi spegnerlo per tenere un esercizio solo per te.',
+      'Gli esercizi della libreria comune hanno l’etichetta «condiviso» e il nome di chi li ha proposti.',
+      'Chi ha condiviso un esercizio può modificarlo (nome, gruppo muscolare, ripetizioni o minuti) o ritirarlo quando vuole; gli altri account lo possono usare ma non modificare.',
+      'Anche la foto viaggia con l’esercizio condiviso: entra nella libreria comune e la gestisce chi lo ha proposto (o l’amministratore).',
+      'Se sei offline la condivisione resta in coda e riparte da sola appena torna il segnale: l’esercizio non si perde.',
+      'Gli esercizi pre-caricati restano come prima: ci sono già su ogni telefono e non richiedono condivisione.',
+    ],
+  },
+  {
     version: '2.6.0',
     title: 'Il cardio si misura in minuti',
     items: [

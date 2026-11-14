@@ -80,6 +80,17 @@ export interface Exercise {
   updatedAt: string
 }
 
+/**
+ * Esercizio della libreria comune: non pre-caricato (`is_default` 0) e senza
+ * proprietario (`user_id` NULL). Lo vede e lo usa ogni account.
+ */
+export function isSharedExercise(exercise: {
+  userId: string | null
+  isDefault: boolean
+}): boolean {
+  return !exercise.isDefault && exercise.userId === null
+}
+
 export interface Workout {
   id: string
   userId: string

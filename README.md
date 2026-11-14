@@ -33,14 +33,19 @@ del browser o cambiare telefono non li cancella più.
   `ADMIN_EMAILS` in `netlify/functions/account.ts` e `photo.ts`) può aggiungerle, sostituirle o
   rimuoverle; il server risponde `403 admin_only` agli altri account, che possono solo leggerle.
 - **Foto dei propri esercizi**: chi crea un esercizio (id casuale, non `def-*`) può caricarne la foto
-  già nella creazione e gestirla dalla pagina Esercizi, senza essere amministratore. Resta privata
-  nel suo account. In ogni caso le foto si modificano **solo** dalla pagina Esercizi: dentro la
+  già nella creazione e gestirla dalla pagina Esercizi, senza essere amministratore. Se l'esercizio
+  è condiviso con tutti, la foto passa nella libreria comune e la gestisce il suo autore (o
+  l'amministratore). In ogni caso le foto si modificano **solo** dalla pagina Esercizi: dentro la
   creazione/modifica di un allenamento sono in sola lettura.
 - **Peso in un tocco**: in modifica la serie ha «applica a tutte» per copiare i kg su tutte le altre.
 - **Esercizi personalizzati**: creazione e **modifica** dalla pagina Esercizi (nome, gruppo
   muscolare, attrezzatura e misura delle serie: ripetizioni o minuti), creazione al volo dalla
   ricerca («Crea "xyz"»); eliminabili se non usati. Il cardio nasce già in minuti, ma la misura si
   può cambiare in entrambi i sensi.
+- **Libreria comune degli esercizi**: i nuovi esercizi entrano nella libreria condivisa da tutti gli
+  account (interruttore «Disponibile a tutti», acceso di default). Ognuno vede quelli degli altri
+  con l'etichetta **condiviso** e il nome di chi li ha proposti; solo l'autore può modificarli o
+  ritirarli. Funziona anche offline: la condivisione resta in coda e riparte al ritorno della rete.
 - **Auto-comportamento**: quando aggiungi un esercizio già fatto, vengono proposte le serie
   dell'ultima volta con il promemoria «Ultima volta …».
 - **Calendario**: vista mensile con intensità del volume per giorno, selezione giorno, elenco
@@ -66,8 +71,8 @@ del browser o cambiare telefono non li cancella più.
 - Tailwind CSS 4
 - SQLite via [`sql.js`](https://github.com/sql-js/sql.js) (WASM), cache locale su IndexedDB
 - `vite-plugin-pwa` (Workbox)
-- Backend: Netlify Functions + Netlify Blobs (account, dati, amici)
-- Hosting: Netlify (build statica + 2 function)
+- Backend: Netlify Functions + Netlify Blobs (account, dati, esercizi condivisi, foto, amici)
+- Hosting: Netlify (build statica + 4 function)
 
 ## Perché non si perdono più i dati
 
@@ -114,11 +119,13 @@ palestralogger-social
   u/<uid>                      -> profilo social (codice amico, amici, snapshot)
   code/<codice amico>          -> uid
 palestralogger-photos
-  idx/library                  -> indice della libreria condivisa (esercizi pre-caricati)
+  idx/library                  -> indice della libreria condivisa (esercizi pre-caricati e condivisi)
   p/library/<esercizio>        -> immagine compressa (JPEG/PNG/WebP)
   idx/<id account>             -> indice delle foto private (esercizi creati dall'utente)
   p/<id account>/<esercizio>   -> immagine compressa privata
   x/<library o id account>/<esercizio> -> tombstone di cancellazione
+palestralogger-exercises
+  library                      -> { exercises: [...] } libreria comune (autore, nome, gruppo, misura)
 ```
 
 ## Sincronizzazione
@@ -132,6 +139,9 @@ palestralogger-photos
 - Se il payload locale e quello remoto sono identici non viene scritto nulla.
 - La sessione è un token casuale di 32 byte salvato sul dispositivo; cambiando la password tutte le
   altre sessioni vengono revocate.
+- La **libreria comune degli esercizi** si allinea con cache di 5 minuti (`/api/exercises`): pull
+  all'avvio/ritorno in foreground, push delle condivisioni createsi offline dalla coda locale. Gli
+  esercizi condivisi sono salvati come `user_id NULL` e non entrano nel payload personale.
 
 ## Migrazione dalla 1.x
 
@@ -153,6 +163,9 @@ palestralogger-photos
   segreti.
 - Gli amici vedono solo lo snapshot pubblicato dal client (ultimi 20 allenamenti), con le note
   escluse salvo consenso.
+- Gli esercizi della **libreria comune** (creati con «Disponibile a tutti», attivo di default) sono
+  visibili a tutti gli account insieme al nome dell'autore: non usare nomi con dati personali. Puoi
+  ritirarli in qualsiasi momento dalla modifica dell'esercizio.
 - Il PIN della 1.x non è più usato per l'accesso: la protezione è l'account. Per il blocco rapido del
   telefono resta il blocco schermo del sistema.
 
@@ -166,9 +179,9 @@ npm run build      # dist/
 npm run preview
 ```
 
-`npm run dev` serve solo il frontend: le function (`/api/account`, `/api/social`) richiedono
-`npx netlify dev` con il sito linkato, perché usano Netlify Blobs. Senza backend l'app resta usabile
-in locale ma non sincronizza.
+`npm run dev` serve solo il frontend: le function (`/api/account`, `/api/exercises`, `/api/photo`,
+`/api/social`) richiedono `npx netlify dev` con il sito linkato, perché usano Netlify Blobs. Senza
+backend l'app resta usabile in locale ma non sincronizza.
 
 Le icone si rigenerano con `npm run icons` (encoder PNG interno, nessuna dipendenza).
 Test del layer dati (SQLite, merge sync, adozione dei dati locali): `npm run smoke`.

@@ -16,6 +16,8 @@ import { createHash } from 'node:crypto'
 
 const ACCOUNTS_STORE = 'palestralogger-accounts'
 const PHOTOS_STORE = 'palestralogger-photos'
+const EXERCISES_STORE = 'palestralogger-exercises'
+const EXERCISES_LIBRARY_KEY = 'library'
 const PHOTO_PREFIX = 'p/'
 /** Proprietario logico della libreria condivisa (non è un id account). */
 const LIBRARY_ID = 'library'
@@ -48,9 +50,42 @@ function isDefaultExercise(exerciseId: string): boolean {
   return exerciseId.startsWith(DEFAULT_EXERCISE_PREFIX)
 }
 
-/** Spazio in cui vivono le foto di un esercizio: libreria o account privato. */
-function ownerFor(account: AccountRecord, exerciseId: string): string {
-  return isDefaultExercise(exerciseId) ? LIBRARY_ID : account.id
+interface SharedExerciseLite {
+  id: string
+  authorId: string
+}
+
+/** Gli esercizi condivisi hanno la foto nella libreria comune. */
+async function readSharedExercises(store: Stores): Promise<SharedExerciseLite[]> {
+  try {
+    const doc = (await store.exercises.get(EXERCISES_LIBRARY_KEY, { type: 'json' })) as
+      | { exercises?: SharedExerciseLite[] }
+      | null
+    return Array.isArray(doc?.exercises) ? doc.exercises : []
+  } catch {
+    return []
+  }
+}
+
+interface PhotoSpace {
+  ownerId: string
+  /** Esercizio della libreria condivisa (di tutti o pre-caricato). */
+  library: boolean
+  /** Autore dell'esercizio condiviso, se presente. */
+  authorId: string | null
+}
+
+async function photoSpace(
+  store: Stores,
+  account: AccountRecord,
+  exerciseId: string,
+): Promise<PhotoSpace> {
+  if (isDefaultExercise(exerciseId)) {
+    return { ownerId: LIBRARY_ID, library: true, authorId: null }
+  }
+  const shared = (await readSharedExercises(store)).find((e) => e.id === exerciseId)
+  if (shared) return { ownerId: LIBRARY_ID, library: true, authorId: shared.authorId }
+  return { ownerId: account.id, library: false, authorId: null }
 }
 
 interface PhotoMeta {
@@ -118,6 +153,7 @@ function stores(event: Event) {
   return {
     accounts: getStore({ name: ACCOUNTS_STORE, ...options }),
     photos: getStore({ name: PHOTOS_STORE, ...options }),
+    exercises: getStore({ name: EXERCISES_STORE, ...options }),
   }
 }
 
@@ -217,20 +253,25 @@ export const handler = async (event: Event) => {
         readIndex(store, LIBRARY_ID),
         readIndex(store, account.id),
       ])
-      const photos: PhotoIndex['photos'] = { ...library.photos }
-      const deleted: PhotoIndex['deleted'] = { ...library.deleted }
+      // prima le foto private, poi la libreria: per gli esercizi condivisi
+      // vince sempre la copia della libreria
+      const photos: PhotoIndex['photos'] = {}
+      const deleted: PhotoIndex['deleted'] = {}
       for (const [exerciseId, meta] of Object.entries(own.photos)) {
         if (!isDefaultExercise(exerciseId)) photos[exerciseId] = meta
       }
       for (const [exerciseId, at] of Object.entries(own.deleted)) {
         if (!isDefaultExercise(exerciseId)) deleted[exerciseId] = at
       }
+      Object.assign(photos, library.photos)
+      Object.assign(deleted, library.deleted)
       return respond(200, { photos, deleted })
     }
 
     if (action === 'get') {
       const exerciseId = normalizeExerciseId(body.exerciseId)
-      const ownerId = ownerFor(account, exerciseId)
+      const space = await photoSpace(store, account, exerciseId)
+      const ownerId = space.ownerId
       const index = await readIndex(store, ownerId)
       const meta = index.photos[exerciseId]
       if (!meta) throw new HttpError(404, 'not_found')
@@ -248,12 +289,14 @@ export const handler = async (event: Event) => {
 
     if (action === 'put') {
       const exerciseId = normalizeExerciseId(body.exerciseId)
-      // gli esercizi della libreria li gestisce solo l'amministratore;
-      // quelli creati da un utente li gestisce il proprietario
-      if (isDefaultExercise(exerciseId) && !isAdmin(account)) {
+      const space = await photoSpace(store, account, exerciseId)
+      // gli esercizi pre-caricati li gestisce solo l'amministratore; quelli
+      // condivisi il loro autore (o l'amministratore); quelli privati il
+      // proprietario
+      if (space.library && !isAdmin(account) && space.authorId !== account.id) {
         throw new HttpError(403, 'admin_only')
       }
-      const ownerId = ownerFor(account, exerciseId)
+      const ownerId = space.ownerId
       const mime = String(body.mime ?? '')
       if (!MIME_RE.test(mime)) throw new HttpError(400, 'invalid_mime')
       const raw = String(body.data ?? '')
@@ -280,10 +323,11 @@ export const handler = async (event: Event) => {
 
     if (action === 'delete') {
       const exerciseId = normalizeExerciseId(body.exerciseId)
-      if (isDefaultExercise(exerciseId) && !isAdmin(account)) {
+      const space = await photoSpace(store, account, exerciseId)
+      if (space.library && !isAdmin(account) && space.authorId !== account.id) {
         throw new HttpError(403, 'admin_only')
       }
-      const ownerId = ownerFor(account, exerciseId)
+      const ownerId = space.ownerId
       const index = await readIndex(store, ownerId)
       delete index.photos[exerciseId]
       index.deleted[exerciseId] = new Date().toISOString()

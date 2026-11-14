@@ -1,4 +1,4 @@
-import { initDb, flush } from '../src/db/db'
+import { initDb, flush, getDb } from '../src/db/db'
 import { applySyncPayload, buildSyncPayload } from '../src/db/sync-queries'
 import {
   adoptLocalData,
@@ -88,6 +88,37 @@ async function main() {
 
   deleteExercise(user.id, cardio.id)
   console.log('cardio eliminato: ok')
+
+  // libreria comune: l'esercizio condiviso è di tutti ma resta governato dall'autore
+  const sharedId = 'shared-test-1'
+  getDb().run(
+    `INSERT INTO exercises (id, user_id, name, muscle, equipment, tracking, is_default, created_at, updated_at)
+     VALUES (?, NULL, 'Rematore Kayak', 'Schiena', 'Manubri', 'reps', 0, ?, ?)`,
+    [sharedId, '2026-01-02T10:00:00.000Z', '2026-01-02T10:00:00.000Z'],
+  )
+  if (!listExercises(user.id).some((e) => e.id === sharedId)) {
+    throw new Error('esercizio della libreria comune non visibile')
+  }
+  if (buildSyncPayload(user.id).exercises.some((e) => e.id === sharedId)) {
+    throw new Error('esercizio condiviso finito nel payload personale')
+  }
+  let sharedErr = ''
+  try {
+    updateExercise(user.id, sharedId, { name: 'Altro nome' })
+  } catch (e) {
+    sharedErr = (e as Error).message
+  }
+  console.log('modifica esercizio condiviso da non autore:', sharedErr)
+  if (!sharedErr) throw new Error('esercizio condiviso modificabile da chiunque')
+  sharedErr = ''
+  try {
+    deleteExercise(user.id, sharedId)
+  } catch (e) {
+    sharedErr = (e as Error).message
+  }
+  console.log('delete esercizio condiviso:', sharedErr)
+  if (!sharedErr) throw new Error('esercizio condiviso eliminabile')
+  getDb().run('DELETE FROM exercises WHERE id = ?', [sharedId])
 
   const id = saveWorkout(user.id, {
     date: '2026-10-24',

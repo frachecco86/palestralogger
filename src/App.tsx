@@ -20,6 +20,7 @@ import { todayISO } from './lib/dates'
 import { isSyncing, syncNow } from './lib/sync'
 import { isSocialEnabled, publishSocial } from './lib/social'
 import { syncPhotos } from './lib/photo'
+import { syncSharedExercises } from './lib/shared-exercises'
 import { type Account, getCachedAccount, getToken, validateSession } from './lib/account'
 
 type Route =
@@ -173,6 +174,10 @@ export default function App() {
     let timer: ReturnType<typeof setTimeout> | undefined
     let lastPhotoSync = 0
     const run = () => {
+      // libreria comune: si allinea anche mentre il resto sincronizza
+      void syncSharedExercises(userId).catch(() => {
+        /* offline: si riprova al prossimo giro */
+      })
       if (!getCachedAccount() || isSyncing()) return
       void syncNow(userId)
         .then(() => {

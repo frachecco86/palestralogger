@@ -44,6 +44,20 @@ if (LIVE) {
   console.log('live bundle:', src)
 }
 
+const sharedLibrary = [
+  {
+    id: 'shared-remote-1',
+    name: 'Rematore Kayak',
+    muscle: 'Schiena',
+    equipment: 'Manubri',
+    tracking: 'reps',
+    authorId: 'acct-luca',
+    authorName: 'Luca',
+    createdAt: '2026-10-01T10:00:00.000Z',
+    updatedAt: '2026-10-01T10:00:00.000Z',
+  },
+]
+
 globalThis.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : input.url
   const file = url.split('/').pop() || ''
@@ -79,6 +93,42 @@ globalThis.fetch = async (input, init) => {
     if (body.action === 'push') return json({ revision: 1, updatedAt: now })
     if (body.action === 'claimSyncCode') return json({ error: 'no_data' }, 404)
     if (body.action === 'delete') return json({ ok: true })
+    return json({ ok: true })
+  }
+  if (url.includes('api/exercises')) {
+    const body = JSON.parse(init?.body || '{}')
+    if (body.action === 'list') return json({ exercises: sharedLibrary })
+    if (body.action === 'publish') {
+      const input = body.exercise || {}
+      const index = sharedLibrary.findIndex((e) => e.id === input.id)
+      if (
+        index < 0 &&
+        sharedLibrary.some(
+          (e) => String(e.name).toLowerCase() === String(input.name || '').toLowerCase(),
+        )
+      ) {
+        return json({ error: 'duplicate_name' }, 409)
+      }
+      const record = {
+        id: input.id,
+        name: input.name,
+        muscle: input.muscle,
+        equipment: input.equipment || '',
+        tracking: input.tracking === 'time' ? 'time' : 'reps',
+        authorId: 'acct-1',
+        authorName: 'Marco',
+        createdAt: input.createdAt,
+        updatedAt: input.updatedAt,
+      }
+      if (index >= 0) sharedLibrary[index] = record
+      else sharedLibrary.push(record)
+      return json({ ok: true, exercises: sharedLibrary })
+    }
+    if (body.action === 'delete') {
+      const index = sharedLibrary.findIndex((e) => e.id === body.exerciseId)
+      if (index >= 0) sharedLibrary.splice(index, 1)
+      return json({ ok: true, exercises: sharedLibrary })
+    }
     return json({ ok: true })
   }
   if (url.includes('api/photo')) {
@@ -384,6 +434,12 @@ await wait(800)
 if (!body().includes('disponibili')) throw new Error('ritorno alla libreria dopo il cardio fallito')
 console.log('9b. cardio a minuti ok')
 
+// libreria comune: l'esercizio condiviso da un altro utente è già disponibile
+if (!body().includes('Rematore Kayak'))
+  throw new Error('esercizio della libreria comune non mostrato')
+if (!body().includes('condiviso')) throw new Error('etichetta «condiviso» mancante')
+console.log('9b2. libreria comune ricevuta ok')
+
 // ogni utente può creare un esercizio con la propria foto
 await clickText('Nuovo')
 await wait(500)
@@ -397,12 +453,14 @@ await wait(250)
 await clickText('Crea esercizio')
 await wait(800)
 if (!body().includes('Pressa sperimentale')) throw new Error('esercizio personalizzato non creato')
+if (!sharedLibrary.some((e) => e.name === 'Pressa sperimentale'))
+  throw new Error('esercizio non pubblicato nella libreria comune')
 if (!buttons().some((b) => aria(b).startsWith('Aggiungi foto a Pressa sperimentale')))
   throw new Error('l’autore non può aggiungere la foto del suo esercizio')
 window.document.querySelector('[aria-label="Chiudi"]')?.click()
 await wait(400)
 
-// modifica dell’esercizio: la misura passa da ripetizioni a minuti
+// modifica dell’esercizio: la misura passa da ripetizioni a minuti e si pubblica
 await clickText('Pressa sperimentale')
 await wait(600)
 await clickText('Modifica', { exact: true })
@@ -410,11 +468,29 @@ await wait(500)
 await clickText('Minuti', { exact: true })
 await wait(250)
 await clickText('Salva modifiche')
-await wait(800)
+await wait(900)
 if (!body().includes('minuti')) throw new Error('modifica della misura a minuti non applicata')
+const published = sharedLibrary.find((e) => e.name === 'Pressa sperimentale')
+if (!published || published.tracking !== 'time')
+  throw new Error('modifica non pubblicata nella libreria comune')
+console.log('9c. modifica misura esercizio ok')
+
+// ritiro dalla libreria comune: torna privato per l’autore
+await clickText('Modifica', { exact: true })
+await wait(500)
+const shareToggle = window.document.querySelector('[aria-label="Disponibile a tutti"]')
+if (!shareToggle) throw new Error('interruttore «Disponibile a tutti» mancante')
+if (shareToggle.getAttribute('aria-checked') !== 'true')
+  throw new Error('condivisione non attiva nella modifica')
+shareToggle.click()
+await wait(250)
+await clickText('Salva modifiche')
+await wait(900)
+if (sharedLibrary.some((e) => e.name === 'Pressa sperimentale'))
+  throw new Error('ritiro dalla libreria comune non riuscito')
 window.document.querySelector('[aria-label="Chiudi"]')?.click()
 await wait(400)
-console.log('9c. modifica misura esercizio ok')
+console.log('9d. ritiro condivisione ok')
 
 // amici (API mockata; in LIVE richiederebbe account reali)
 if (!LIVE) {

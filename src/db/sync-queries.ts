@@ -225,10 +225,10 @@ export function applySyncPayload(userId: string, remote: SyncPayload | null): Sy
     }
 
     const localExercises = new Map(
-      query<RawExercise>('SELECT * FROM exercises WHERE user_id = ?', [userId]).map((e) => [
-        e.id,
-        e.updated_at || e.created_at,
-      ]),
+      query<RawExercise>(
+        'SELECT * FROM exercises WHERE user_id = ? OR (user_id IS NULL AND is_default = 0)',
+        [userId],
+      ).map((e) => [e.id, e.updated_at || e.created_at]),
     )
     const localWorkouts = new Map(
       query<RawWorkout>('SELECT * FROM workouts WHERE user_id = ?', [userId]).map((w) => [

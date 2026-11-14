@@ -11,6 +11,8 @@ import {
   type WorkoutSummary,
 } from '../lib/types'
 import { addDays, parseISO, startOfMonth, startOfWeek, todayISO } from '../lib/dates'
+import { isSharedAuthor } from '../lib/shared-cache'
+import { isSharedExercise } from '../lib/types'
 
 // ---------- Users ----------
 
@@ -273,9 +275,10 @@ export function createExercise(
 }
 
 /**
- * Modifica un esercizio personale: nome, gruppo muscolare, attrezzatura e
- * misura delle serie (ripetizioni o minuti). La data di modifica cambia così
- * la modifica arriva anche agli altri dispositivi con la sincronizzazione.
+ * Modifica un esercizio personale o uno della libreria comune (solo l'autore):
+ * nome, gruppo muscolare, attrezzatura e misura delle serie (ripetizioni o
+ * minuti). La data di modifica cambia così la modifica arriva anche agli altri
+ * dispositivi con la sincronizzazione.
  */
 export function updateExercise(
   userId: string,
@@ -289,8 +292,9 @@ export function updateExercise(
 ): Exercise {
   const current = getExercise(id)
   if (!current) throw new Error('Esercizio non trovato')
-  if (current.isDefault || current.userId !== userId) {
-    throw new Error('Gli esercizi predefiniti non si possono modificare')
+  const sharedAuthor = isSharedExercise(current) && isSharedAuthor(id, userId)
+  if (current.isDefault || (!sharedAuthor && current.userId !== userId)) {
+    throw new Error('Questo esercizio non si può modificare')
   }
 
   const name = (changes.name ?? current.name).trim()
@@ -307,8 +311,8 @@ export function updateExercise(
 
   const now = new Date().toISOString()
   mutate(
-    'UPDATE exercises SET name = ?, muscle = ?, equipment = ?, tracking = ?, updated_at = ? WHERE id = ? AND user_id = ?',
-    [name, muscle, equipment, tracking, now, id, userId],
+    'UPDATE exercises SET name = ?, muscle = ?, equipment = ?, tracking = ?, updated_at = ? WHERE id = ?',
+    [name, muscle, equipment, tracking, now, id],
   )
   const updated = getExercise(id)
   if (!updated) throw new Error('Esercizio non aggiornato')
@@ -316,6 +320,10 @@ export function updateExercise(
 }
 
 export function deleteExercise(userId: string, id: string): void {
+  const current = getExercise(id)
+  if (current && isSharedExercise(current)) {
+    throw new Error('Esercizio condiviso con tutti: togli prima la condivisione')
+  }
   const used = queryOne<{ n: number }>(
     'SELECT COUNT(*) AS n FROM workout_sets s JOIN workouts w ON w.id = s.workout_id WHERE w.user_id = ? AND s.exercise_id = ?',
     [userId, id],

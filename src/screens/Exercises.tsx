@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Exercise, ExerciseTracking, Muscle, User } from '../lib/types'
-import { MUSCLES, MUSCLE_COLORS, defaultTracking } from '../lib/types'
+import { MUSCLES, MUSCLE_COLORS, defaultTracking, isSharedExercise } from '../lib/types'
 import {
   createExercise,
   deleteExercise,
+  getExercise,
   getExerciseAggregates,
   getExerciseHistory,
   getExercisePhoto,
@@ -13,6 +14,8 @@ import {
   type ExercisePhoto,
 } from '../db/queries'
 import { addExercisePhoto, canManagePhoto, removeExercisePhoto, syncPhotos } from '../lib/photo'
+import { isSharedAuthor, sharedAuthorName } from '../lib/shared-cache'
+import { shareExercise, syncSharedExercises, unshareExercise } from '../lib/shared-exercises'
 import { formatDate } from '../lib/dates'
 import { formatKg, formatWeight, plural } from '../lib/format'
 import { toast, useLiveData } from '../lib/live'
@@ -26,6 +29,7 @@ import {
   Field,
   Icon,
   Sheet,
+  Toggle,
   TrackingPicker,
   TrackingTag,
   cx,
@@ -49,6 +53,8 @@ export function ExercisesScreen({
   // Ripetizioni o minuti: il cardio parte in minuti, poi si può cambiare.
   const [newTracking, setNewTracking] = useState<ExerciseTracking>('reps')
   const [newTrackingTouched, setNewTrackingTouched] = useState(false)
+  // di base i nuovi esercizi entrano nella libreria comune
+  const [newShared, setNewShared] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   // Modifica di un esercizio personale (nome, gruppo, attrezzatura, misura)
@@ -57,6 +63,7 @@ export function ExercisesScreen({
   const [editMuscle, setEditMuscle] = useState<Muscle>('Altro')
   const [editEquipment, setEditEquipment] = useState('')
   const [editTracking, setEditTracking] = useState<ExerciseTracking>('reps')
+  const [editShared, setEditShared] = useState(false)
   const [editErr, setEditErr] = useState<string | null>(null)
   // Foto: l'amministratore gestisce quelle della libreria, ogni utente quelle
   // degli esercizi che ha creato (vedi canManagePhoto).
@@ -110,6 +117,13 @@ export function ExercisesScreen({
   }, [filtered])
 
   const usedCount = exercises.filter((e) => aggMap.has(e.id)).length
+
+  // Libreria comune: all'apertura si allinea (la cache evita richieste continue)
+  useEffect(() => {
+    void syncSharedExercises(user.id).catch(() => {
+      /* offline: si riprova dal ciclo di sincronizzazione */
+    })
+  }, [user.id])
 
   // Scarica dal cloud le foto mancanti degli esercizi visibili (a blocchi,
   // per non pesare sulla rete con l'intera libreria).
@@ -197,6 +211,7 @@ export function ExercisesScreen({
     setNewEquipment('')
     setNewTracking('reps')
     setNewTrackingTouched(false)
+    setNewShared(true)
     setErr(null)
     clearNewPhoto()
   }
@@ -212,12 +227,14 @@ export function ExercisesScreen({
     setEditMuscle(exercise.muscle)
     setEditEquipment(exercise.equipment)
     setEditTracking(exercise.tracking)
+    setEditShared(isSharedExercise(exercise))
     setEditErr(null)
     setEditing(true)
   }
 
-  function handleEdit() {
+  async function handleEdit() {
     if (!detail) return
+    const wasShared = isSharedExercise(detail)
     try {
       const updated = updateExercise(user.id, detail.id, {
         name: editName,
@@ -227,7 +244,32 @@ export function ExercisesScreen({
       })
       setDetail(updated)
       setEditing(false)
-      toast('Esercizio aggiornato')
+
+      let message = 'Esercizio aggiornato'
+      if (editShared) {
+        try {
+          const outcome = await shareExercise(user.id, updated.id)
+          message =
+            outcome === 'published'
+              ? 'Esercizio aggiornato e disponibile a tutti'
+              : 'Esercizio aggiornato: condivisione in coda, riparte online'
+        } catch (e) {
+          toast(e instanceof Error ? e.message : 'Condivisione non riuscita', 'err')
+        }
+      } else if (wasShared) {
+        try {
+          const outcome = await unshareExercise(user.id, updated.id)
+          message =
+            outcome === 'removed'
+              ? 'Esercizio non più condiviso con tutti'
+              : 'Esercizio aggiornato: ritiro in coda, riparte online'
+        } catch (e) {
+          toast(e instanceof Error ? e.message : 'Ritiro non riuscito', 'err')
+        }
+      }
+      toast(message)
+      const fresh = getExercise(updated.id)
+      if (fresh) setDetail(fresh)
     } catch (e) {
       setEditErr(e instanceof Error ? e.message : 'Errore')
     }
@@ -255,23 +297,38 @@ export function ExercisesScreen({
   function handleCreate() {
     // il File resta valido anche dopo aver liberato l'anteprima
     const file = newPhoto?.file ?? null
+    const shareNow = newShared
     try {
       const ex = createExercise(user.id, newName, newMuscle, newEquipment, newTracking)
       toast('Esercizio aggiunto')
       resetCreate()
       setDetail(ex)
-      if (file) {
-        // compressione e caricamento in background: non bloccano la creazione
-        void addExercisePhoto(user.id, ex.id, file)
-          .then(() => {
+      void (async () => {
+        if (file) {
+          // compressione e caricamento in background: non bloccano la creazione
+          try {
+            await addExercisePhoto(user.id, ex.id, file)
             const photo = getExercisePhoto(user.id, ex.id)
             if (photo) setPhotos((prev) => ({ ...prev, [ex.id]: photo }))
             toast('Foto salvata')
-          })
-          .catch((e: unknown) => {
+          } catch (e) {
             toast(e instanceof Error ? e.message : 'Foto non salvata', 'err')
-          })
-      }
+          }
+        }
+        if (!shareNow) return
+        try {
+          const outcome = await shareExercise(user.id, ex.id)
+          toast(
+            outcome === 'published'
+              ? 'Esercizio disponibile a tutti'
+              : 'Condivisione in coda: riparte appena torni online',
+          )
+        } catch (e) {
+          toast(e instanceof Error ? e.message : 'Condivisione non riuscita', 'err')
+        }
+        const fresh = getExercise(ex.id)
+        if (fresh) setDetail((prev) => (prev?.id === ex.id ? fresh : prev))
+      })()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Errore')
     }
@@ -287,6 +344,12 @@ export function ExercisesScreen({
   const historyValue = (h: { bestWeight: number; reps: number }) =>
     timedDetail ? h.reps : h.bestWeight
   const maxHistory = Math.max(1, ...history.map(historyValue))
+
+  // Esercizio della libreria comune: solo l'autore (o l'admin) lo può modificare
+  const detailShared = detail ? isSharedExercise(detail) : false
+  const detailMine = !!detail && detail.userId === user.id
+  const detailAuthor = !!detail && detailShared && isSharedAuthor(detail.id, user.id)
+  const detailAuthorName = detail && detailShared ? sharedAuthorName(detail.id) : ''
 
   return (
     <div className="mx-auto w-full max-w-md px-4 pt-[max(16px,env(safe-area-inset-top))]">
@@ -376,7 +439,10 @@ export function ExercisesScreen({
                         <div className="flex items-center gap-1.5">
                           <span className="truncate text-[13px] font-medium">{e.name}</span>
                           <TrackingTag tracking={e.tracking} />
-                          {!e.isDefault && <Badge color="#7CFFB2">tuo</Badge>}
+                          {!e.isDefault && e.userId === user.id && (
+                            <Badge color="#7CFFB2">tuo</Badge>
+                          )}
+                          {isSharedExercise(e) && <Badge color="#5FD4FF">condiviso</Badge>}
                         </div>
                         <p className="text-[10.5px] text-faint">
                           {e.equipment || e.muscle}
@@ -450,8 +516,15 @@ export function ExercisesScreen({
                 {detail.equipment ? ` · ${detail.equipment}` : ''}
               </span>
               {detail.tracking === 'time' && <TrackingTag tracking={detail.tracking} />}
-              {!detail.isDefault && <Badge color="#7CFFB2">personalizzato</Badge>}
+              {detailMine && <Badge color="#7CFFB2">personalizzato</Badge>}
+              {detailShared && <Badge color="#5FD4FF">condiviso</Badge>}
             </div>
+            {detailShared && detailAuthorName && (
+              <p className="mt-1 flex items-center gap-1.5 text-[10.5px] text-faint">
+                <Icon name="users" size={12} /> Disponibile a tutti · condiviso da{' '}
+                {detailAuthorName}
+              </p>
+            )}
 
             <div className="mt-3 grid grid-cols-4 divide-x divide-line rounded-xl border border-line bg-surface2/60">
               {[
@@ -531,7 +604,7 @@ export function ExercisesScreen({
               <Button className="flex-1" onClick={() => onQuickAdd(detail.id)}>
                 <Icon name="plus" size={16} /> Usa in allenamento
               </Button>
-              {!detail.isDefault && (
+              {(detailMine || detailAuthor) && (
                 <Button
                   variant="secondary"
                   onClick={() => startEdit(detail)}
@@ -540,7 +613,7 @@ export function ExercisesScreen({
                   <Icon name="edit" size={16} /> Modifica
                 </Button>
               )}
-              {!detail.isDefault && (
+              {detailMine && (
                 <Button variant="danger" onClick={() => setConfirmDelete(true)} aria-label="Elimina">
                   <Icon name="trash" size={16} />
                 </Button>
@@ -616,6 +689,18 @@ export function ExercisesScreen({
                 : 'Con «Minuti» l’esercizio si registra a tempo (cardio o lavoro isometrico).'
             }
           />
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-surface2/50 px-3 py-2.5">
+            <Icon name="users" size={16} className="shrink-0 text-muted" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] font-medium">Disponibile a tutti</p>
+              <p className="text-[10.5px] leading-tight text-faint">
+                {newShared
+                  ? 'Entra nella libreria comune: lo vedono tutti gli account'
+                  : 'Resta solo nel tuo account'}
+              </p>
+            </div>
+            <Toggle checked={newShared} onChange={setNewShared} label="Disponibile a tutti" />
+          </div>
           <Field label="Attrezzatura" hint="facoltativa">
             <input
               className={inputClass}
@@ -717,8 +802,20 @@ export function ExercisesScreen({
                 : 'In allenamento le serie restano ripetizioni con il peso.'
             }
           />
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-surface2/50 px-3 py-2.5">
+            <Icon name="users" size={16} className="shrink-0 text-muted" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] font-medium">Disponibile a tutti</p>
+              <p className="text-[10.5px] leading-tight text-faint">
+                {editShared
+                  ? 'Nella libreria comune di ogni account'
+                  : 'Visibile solo a te'}
+              </p>
+            </div>
+            <Toggle checked={editShared} onChange={setEditShared} label="Disponibile a tutti" />
+          </div>
           {editErr && <p className="text-[12.5px] text-danger">{editErr}</p>}
-          <Button size="lg" full onClick={handleEdit} disabled={editName.trim().length < 2}>
+          <Button size="lg" full onClick={() => void handleEdit()} disabled={editName.trim().length < 2}>
             Salva modifiche
           </Button>
         </div>

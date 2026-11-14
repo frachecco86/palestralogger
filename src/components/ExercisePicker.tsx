@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Exercise, ExerciseTracking, Muscle } from '../lib/types'
-import { MUSCLES, MUSCLE_COLORS, defaultTracking } from '../lib/types'
+import { MUSCLES, MUSCLE_COLORS, defaultTracking, isSharedExercise } from '../lib/types'
 import {
   createExercise,
   getExerciseAggregates,
@@ -10,7 +10,8 @@ import {
   type ExercisePhoto,
 } from '../db/queries'
 import { syncPhotos } from '../lib/photo'
-import { Badge, Button, Chip, Icon, Sheet, TrackingPicker, TrackingTag, cx, inputClass } from './ui'
+import { shareExercise } from '../lib/shared-exercises'
+import { Badge, Button, Chip, Icon, Sheet, Toggle, TrackingPicker, TrackingTag, cx, inputClass } from './ui'
 import { formatDate } from '../lib/dates'
 import { useLiveData, toast } from '../lib/live'
 import { ExerciseThumb } from './ExercisePhoto'
@@ -37,6 +38,7 @@ export function ExercisePicker({
   // il cardio nasce in minuti: si può cambiare prima di crearlo
   const [newTracking, setNewTracking] = useState<ExerciseTracking>('reps')
   const [newTrackingTouched, setNewTrackingTouched] = useState(false)
+  const [newShared, setNewShared] = useState(true)
   const [err, setErr] = useState<string | null>(null)
 
   const exercises = useLiveData(() => listExercises(userId), [userId])
@@ -104,6 +106,7 @@ export function ExercisePicker({
     setNewEquipment('')
     setNewTracking('reps')
     setNewTrackingTouched(false)
+    setNewShared(true)
     setErr(null)
   }
 
@@ -136,7 +139,21 @@ export function ExercisePicker({
   function confirmCreate() {
     try {
       const ex = createExercise(userId, newName, newMuscle, newEquipment, newTracking)
-      toast('Esercizio creato')
+      if (newShared) {
+        void shareExercise(userId, ex.id)
+          .then((outcome) =>
+            toast(
+              outcome === 'published'
+                ? 'Esercizio creato e condiviso con tutti'
+                : 'Esercizio creato: condivisione in coda',
+            ),
+          )
+          .catch((e: unknown) =>
+            toast(e instanceof Error ? e.message : 'Condivisione non riuscita', 'err'),
+          )
+      } else {
+        toast('Esercizio creato')
+      }
       pick(ex)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Errore nella creazione')
@@ -199,6 +216,17 @@ export function ExercisePicker({
                 : 'Con «Minuti» l’esercizio si registra a tempo.'
             }
           />
+
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-surface2/50 px-3 py-2.5">
+            <Icon name="users" size={16} className="shrink-0 text-muted" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] font-medium">Disponibile a tutti</p>
+              <p className="text-[10.5px] leading-tight text-faint">
+                {newShared ? 'Nella libreria comune di ogni account' : 'Solo nel tuo account'}
+              </p>
+            </div>
+            <Toggle checked={newShared} onChange={setNewShared} label="Disponibile a tutti" />
+          </div>
 
           <label className="block">
             <span className="mb-1.5 block text-[12px] font-medium uppercase tracking-wide text-muted">
@@ -312,7 +340,10 @@ export function ExercisePicker({
                         <span className="flex items-center gap-1.5">
                           <span className="truncate text-[13.5px] font-medium">{e.name}</span>
                           <TrackingTag tracking={e.tracking} />
-                          {!e.isDefault && <Badge color="#7CFFB2">tuo</Badge>}
+                          {!e.isDefault && e.userId === userId && (
+                            <Badge color="#7CFFB2">tuo</Badge>
+                          )}
+                          {isSharedExercise(e) && <Badge color="#5FD4FF">condiviso</Badge>}
                         </span>
                         <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-faint">
                           <span>{e.muscle}</span>

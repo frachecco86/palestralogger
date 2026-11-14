@@ -1,10 +1,12 @@
 import {
   deleteExercisePhoto,
+  getExercise,
   getExercisePhoto,
   listExercisePhotoMeta,
   saveExercisePhoto,
 } from '../db/queries'
-import { getToken, isAdmin } from './account'
+import { getCachedAccount, getToken, isAdmin } from './account'
+import { isSharedAuthor } from './shared-cache'
 
 /**
  * Foto esercizio: compressa sul telefono, salvata in SQLite (cache offline) e
@@ -20,14 +22,22 @@ const API = '/api/photo'
 const MAX_UPLOAD_BYTES = 1_450_000
 const MAX_UPLOAD_BASE64 = MAX_UPLOAD_BYTES * 2
 const MAX_SIDE = 520
-const DEFAULT_EXERCISE_PREFIX = 'def-'
 
 /**
- * Chi può gestire la foto: l'amministratore per gli esercizi della libreria
- * (id `def-*`), il proprietario per gli esercizi che ha creato.
+ * Chi può gestire la foto:
+ * - l'amministratore, sempre;
+ * - il proprietario di un esercizio personale;
+ * - l'autore di un esercizio della libreria comune.
+ * Gli esercizi pre-caricati (`def-*`) fuori dalla libreria restano dell'admin.
  */
 export function canManagePhoto(exerciseId: string): boolean {
-  return isAdmin() || !exerciseId.startsWith(DEFAULT_EXERCISE_PREFIX)
+  if (isAdmin()) return true
+  const exercise = getExercise(exerciseId)
+  if (!exercise) return false
+  if (exercise.isDefault) return false
+  if (exercise.userId !== null) return true
+  // esercizio condiviso: solo chi lo ha pubblicato
+  return isSharedAuthor(exerciseId, getCachedAccount()?.id)
 }
 
 interface RemotePhotoMeta {
@@ -203,6 +213,30 @@ export async function removeExercisePhoto(userId: string, exerciseId: string): P
 
 export async function listRemotePhotos(): Promise<RemotePhotoIndex> {
   return call<RemotePhotoIndex>('list')
+}
+
+/**
+ * Carica nella libreria condivisa la foto già salvata in locale (usata quando
+ * un esercizio personale viene reso disponibile a tutti).
+ */
+export async function uploadLocalExercisePhoto(
+  userId: string,
+  exerciseId: string,
+): Promise<boolean> {
+  if (!getToken()) return false
+  const local = getExercisePhoto(userId, exerciseId)
+  if (!local || local.bytes.length > MAX_UPLOAD_BYTES) return false
+  try {
+    await call('put', {
+      exerciseId,
+      mime: local.mime,
+      updatedAt: local.updatedAt,
+      data: bytesToBase64(local.bytes),
+    })
+    return true
+  } catch {
+    return false
+  }
 }
 
 export async function downloadExercisePhoto(exerciseId: string) {
