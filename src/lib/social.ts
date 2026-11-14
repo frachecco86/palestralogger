@@ -1,7 +1,7 @@
 import { getWorkout, getStats, listWorkouts } from '../db/queries'
 import { getToken } from './account'
 import { epley } from './format'
-import type { Muscle } from './types'
+import type { ExerciseTracking, Muscle } from './types'
 
 // ---------- Tipi condivisi ----------
 
@@ -14,6 +14,8 @@ export interface SharedExercise {
   name: string
   muscle: Muscle
   equipment: string
+  /** 'time' per il cardio: le serie sono minuti. Assente negli snapshot vecchi. */
+  tracking?: ExerciseTracking
   sets: SharedSet[]
 }
 
@@ -170,6 +172,7 @@ export function buildSharedSnapshot(uid: string): SharedSnapshot {
         name: e.exercise.name,
         muscle: e.exercise.muscle,
         equipment: e.exercise.equipment,
+        tracking: e.exercise.tracking,
         sets: e.sets.map((s) => ({ reps: s.reps, weight: s.weight })),
       })),
       ...(shareNotes && w.notes ? { note: w.notes } : {}),

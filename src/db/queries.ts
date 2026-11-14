@@ -1,12 +1,14 @@
 import { mutate, query, queryOne, tx, getDb } from './db'
 import { hashPin, newId, verifyPin } from '../lib/hash'
-import type {
-  Exercise,
-  Muscle,
-  User,
-  WorkoutDetail,
-  WorkoutEntryInput,
-  WorkoutSummary,
+import {
+  defaultTracking,
+  type Exercise,
+  type ExerciseTracking,
+  type Muscle,
+  type User,
+  type WorkoutDetail,
+  type WorkoutEntryInput,
+  type WorkoutSummary,
 } from '../lib/types'
 import { addDays, parseISO, startOfMonth, startOfWeek, todayISO } from '../lib/dates'
 
@@ -198,9 +200,16 @@ interface RawExercise {
   name: string
   muscle: string
   equipment: string
+  tracking: string | null
   is_default: number
   created_at: string
   updated_at: string
+}
+
+/** I database precedenti alla 2.6.0 non hanno il campo: si deduce dal muscolo. */
+export function parseTracking(value: string | null | undefined, muscle: string): ExerciseTracking {
+  if (value === 'time' || value === 'reps') return value
+  return defaultTracking(muscle as Muscle)
 }
 
 const mapExercise = (r: RawExercise): Exercise => ({
@@ -209,6 +218,7 @@ const mapExercise = (r: RawExercise): Exercise => ({
   name: r.name,
   muscle: r.muscle as Muscle,
   equipment: r.equipment,
+  tracking: parseTracking(r.tracking, r.muscle),
   isDefault: r.is_default === 1,
   createdAt: r.created_at,
   updatedAt: r.updated_at || r.created_at,
@@ -233,6 +243,7 @@ export function createExercise(
   name: string,
   muscle: Muscle,
   equipment = '',
+  tracking: ExerciseTracking = defaultTracking(muscle),
 ): Exercise {
   const clean = name.trim()
   if (clean.length < 2) throw new Error('Nome esercizio troppo corto')
@@ -249,15 +260,59 @@ export function createExercise(
     name: clean,
     muscle,
     equipment: equipment.trim(),
+    tracking,
     isDefault: false,
     createdAt: now,
     updatedAt: now,
   }
   mutate(
-    'INSERT INTO exercises (id, user_id, name, muscle, equipment, is_default, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
-    [ex.id, ex.userId, ex.name, ex.muscle, ex.equipment, ex.createdAt, ex.updatedAt],
+    'INSERT INTO exercises (id, user_id, name, muscle, equipment, tracking, is_default, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)',
+    [ex.id, ex.userId, ex.name, ex.muscle, ex.equipment, ex.tracking, ex.createdAt, ex.updatedAt],
   )
   return ex
+}
+
+/**
+ * Modifica un esercizio personale: nome, gruppo muscolare, attrezzatura e
+ * misura delle serie (ripetizioni o minuti). La data di modifica cambia così
+ * la modifica arriva anche agli altri dispositivi con la sincronizzazione.
+ */
+export function updateExercise(
+  userId: string,
+  id: string,
+  changes: {
+    name?: string
+    muscle?: Muscle
+    equipment?: string
+    tracking?: ExerciseTracking
+  },
+): Exercise {
+  const current = getExercise(id)
+  if (!current) throw new Error('Esercizio non trovato')
+  if (current.isDefault || current.userId !== userId) {
+    throw new Error('Gli esercizi predefiniti non si possono modificare')
+  }
+
+  const name = (changes.name ?? current.name).trim()
+  if (name.length < 2) throw new Error('Nome esercizio troppo corto')
+  const muscle = changes.muscle ?? current.muscle
+  const equipment = (changes.equipment ?? current.equipment).trim()
+  const tracking = changes.tracking ?? current.tracking
+
+  const dup = queryOne<{ id: string }>(
+    'SELECT id FROM exercises WHERE (user_id IS NULL OR user_id = ?) AND lower(name) = lower(?) AND id <> ?',
+    [userId, name, id],
+  )
+  if (dup) throw new Error('Esiste già un esercizio con questo nome')
+
+  const now = new Date().toISOString()
+  mutate(
+    'UPDATE exercises SET name = ?, muscle = ?, equipment = ?, tracking = ?, updated_at = ? WHERE id = ? AND user_id = ?',
+    [name, muscle, equipment, tracking, now, id, userId],
+  )
+  const updated = getExercise(id)
+  if (!updated) throw new Error('Esercizio non aggiornato')
+  return updated
 }
 
 export function deleteExercise(userId: string, id: string): void {
@@ -393,6 +448,7 @@ export function getWorkout(userId: string, workoutId: string): WorkoutDetail | n
         name: 'Esercizio eliminato',
         muscle: 'Altro' as Muscle,
         equipment: '',
+        tracking: 'reps' as ExerciseTracking,
         isDefault: true,
         createdAt: '',
         updatedAt: '',
@@ -442,7 +498,7 @@ export function saveWorkout(userId: string, input: SaveWorkoutInput): string {
     }))
     .filter((e) => e.sets.length > 0)
 
-  if (entries.length === 0) throw new Error("Inserisci almeno una serie con ripetizioni maggiori di zero")
+  if (entries.length === 0) throw new Error("Inserisci almeno una serie con un valore maggiore di zero")
 
   const now = new Date().toISOString()
   let workoutId = input.id ?? ''
@@ -614,6 +670,8 @@ export interface ExerciseAggregate {
   bestWeight: number
   bestE1rm: number
   lastDate: string
+  /** Ripetizioni totali (minuti totali per gli esercizi a tempo). */
+  totalReps: number
 }
 
 export function getExerciseAggregates(userId: string, limit = 8): ExerciseAggregate[] {
@@ -627,7 +685,8 @@ export function getExerciseAggregates(userId: string, limit = 8): ExerciseAggreg
             COUNT(DISTINCT w.id) AS sessions,
             MAX(s.weight) AS bestWeight,
             MAX(CASE WHEN s.reps > 0 THEN s.weight * (1 + s.reps / 30.0) ELSE 0 END) AS bestE1rm,
-            MAX(w.date) AS lastDate
+            MAX(w.date) AS lastDate,
+            COALESCE(SUM(s.reps), 0) AS totalReps
      FROM workout_sets s
      JOIN workouts w ON w.id = s.workout_id
      JOIN exercises e ON e.id = s.exercise_id
@@ -645,6 +704,8 @@ export interface ExerciseHistoryPoint {
   sets: number
   bestWeight: number
   bestE1rm: number
+  /** Ripetizioni del giorno (minuti per gli esercizi a tempo). */
+  reps: number
 }
 
 export function getExerciseHistory(
@@ -657,7 +718,8 @@ export function getExerciseHistory(
             COALESCE(SUM(s.reps * s.weight), 0) AS volume,
             COUNT(s.id) AS sets,
             MAX(s.weight) AS bestWeight,
-            MAX(CASE WHEN s.reps > 0 THEN s.weight * (1 + s.reps / 30.0) ELSE 0 END) AS bestE1rm
+            MAX(CASE WHEN s.reps > 0 THEN s.weight * (1 + s.reps / 30.0) ELSE 0 END) AS bestE1rm,
+            COALESCE(SUM(s.reps), 0) AS reps
      FROM workout_sets s
      JOIN workouts w ON w.id = s.workout_id
      WHERE w.user_id = ? AND s.exercise_id = ?
@@ -699,7 +761,9 @@ export function getStats(userId: string, today = todayISO()): Stats {
 
   const totalRepsRow = queryOne<{ reps: number }>(
     `SELECT COALESCE(SUM(s.reps), 0) AS reps FROM workout_sets s
-     JOIN workouts w ON w.id = s.workout_id WHERE w.user_id = ?`,
+     JOIN workouts w ON w.id = s.workout_id
+     JOIN exercises e ON e.id = s.exercise_id
+     WHERE w.user_id = ? AND e.tracking <> 'time'`,
     [userId],
   )
 

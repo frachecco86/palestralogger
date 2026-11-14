@@ -72,7 +72,9 @@ function SharedWorkoutCard({ workout }: { workout: SharedWorkout }) {
                   key={si}
                   className="rounded-md border border-line bg-surface2 px-1.5 py-0.5 text-[10px] tabular text-muted"
                 >
-                  {s.weight > 0 ? `${formatWeight(s.weight)} kg` : 'corpo libero'} × {s.reps}
+                  {ex.tracking === 'time'
+                    ? `${s.reps} min`
+                    : `${s.weight > 0 ? `${formatWeight(s.weight)} kg` : 'corpo libero'} × ${s.reps}`}
                 </span>
               ))}
             </div>

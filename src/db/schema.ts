@@ -1,4 +1,5 @@
 import type { Muscle } from '../lib/types'
+import { defaultTracking } from '../lib/types'
 
 export const SCHEMA_V1 = `
 CREATE TABLE IF NOT EXISTS users (
@@ -17,6 +18,8 @@ CREATE TABLE IF NOT EXISTS exercises (
   name TEXT NOT NULL,
   muscle TEXT NOT NULL,
   equipment TEXT NOT NULL DEFAULT '',
+  -- 'reps' (ripetizioni) oppure 'time' (minuti, per il cardio)
+  tracking TEXT NOT NULL DEFAULT '',
   is_default INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT '',
@@ -169,4 +172,5 @@ export const SEED_EXERCISES = SEED.map(([slug, name, muscle, equipment]) => ({
   name,
   muscle,
   equipment,
+  tracking: defaultTracking(muscle),
 }))

@@ -19,6 +19,7 @@ import {
   getStats,
   lastPerformance,
   createExercise,
+  updateExercise,
   deleteExercise,
   deleteWorkout,
   updateUserPin,
@@ -39,6 +40,54 @@ async function main() {
 
   const custom = createExercise(user.id, 'Chest press inclinata', 'Petto', 'Macchina')
   console.log('esercizio custom:', custom.name, custom.muscle, 'default?', custom.isDefault)
+  if (custom.tracking !== 'reps') throw new Error('un esercizio con i pesi deve restare a ripetizioni')
+
+  // cardio: minuti al posto delle ripetizioni (2.6.0)
+  const treadmill = exercises.find((e) => e.id === 'def-tapis-roulant')
+  if (!treadmill || treadmill.tracking !== 'time') throw new Error('il cardio predefinito non è a minuti')
+  const cardio = createExercise(user.id, 'Corsa in salita', 'Cardio', 'Tapis roulant')
+  console.log('cardio custom:', cardio.name, '| misura:', cardio.tracking)
+  if (cardio.tracking !== 'time') throw new Error('il cardio non parte in minuti')
+
+  const switched = updateExercise(user.id, cardio.id, {
+    name: 'Corsa in salita leggera',
+    tracking: 'reps',
+  })
+  console.log('cardio modificato:', switched.name, '| misura:', switched.tracking)
+  if (switched.tracking !== 'reps' || switched.name !== 'Corsa in salita leggera') {
+    throw new Error('modifica della misura non applicata')
+  }
+  updateExercise(user.id, cardio.id, { tracking: 'time' })
+
+  const syncedCardio = buildSyncPayload(user.id).exercises.find((e) => e.id === cardio.id)
+  if (syncedCardio?.tracking !== 'time') throw new Error('la misura non viene sincronizzata')
+
+  const cardioWorkoutId = saveWorkout(user.id, {
+    date: '2026-10-23',
+    name: 'Cardio',
+    entries: [{ exerciseId: 'def-tapis-roulant', sets: [{ reps: 30, weight: 0 }] }],
+  })
+  const cardioWorkout = getWorkout(user.id, cardioWorkoutId)
+  console.log(
+    'cardio in allenamento: minuti',
+    cardioWorkout?.entries[0].sets[0].reps,
+    '| volume',
+    cardioWorkout?.volume,
+  )
+  if (cardioWorkout?.volume !== 0) throw new Error('i minuti del cardio sporcano il volume')
+  deleteWorkout(user.id, cardioWorkoutId)
+
+  let trackedErr = ''
+  try {
+    updateExercise(user.id, 'def-tapis-roulant', { tracking: 'reps' })
+  } catch (e) {
+    trackedErr = (e as Error).message
+  }
+  console.log('modifica esercizio predefinito:', trackedErr)
+  if (!trackedErr) throw new Error('gli esercizi predefiniti non devono essere modificabili')
+
+  deleteExercise(user.id, cardio.id)
+  console.log('cardio eliminato: ok')
 
   const id = saveWorkout(user.id, {
     date: '2026-10-24',

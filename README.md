@@ -16,10 +16,11 @@ del browser o cambiare telefono non li cancella più.
 - **Offline-first**: in palestra l'app funziona senza rete; le modifiche si allineano appena torna
   il segnale (in background, senza bloccare l'interfaccia).
 - **Nuovo allenamento**: data, titolo opzionale, note ed esercizi con serie (ripetizioni × peso,
-  incrementi da 2,5 kg). Ogni esercizio ha un suo campo **note** (tecnica, sensazioni, presa,
-  fastidi…): si scrive in modalità «Modifica», resta visibile in lettura e viene sincronizzato nel
-  cloud. Gli esercizi di un allenamento salvato restano compressi (si aprono con la freccia) e la
-  cancellazione di esercizi/serie richiede la modalità «Modifica».
+  incrementi da 2,5 kg). Gli esercizi **cardio** si registrano in **minuti** (niente ripetizioni né
+  peso) e accanto al nome compare l’etichetta «minuti». Ogni esercizio ha un suo campo **note**
+  (tecnica, sensazioni, presa, fastidi…): si scrive in modalità «Modifica», resta visibile in lettura
+  e viene sincronizzato nel cloud. Gli esercizi di un allenamento salvato restano compressi (si
+  aprono con la freccia) e la cancellazione di esercizi/serie richiede la modalità «Modifica».
 - **Libreria esercizi**: ~60 esercizi principali pre-caricati (panca piana, leg press, squat, stacco,
   lat machine, trazioni, military press, curl, hip thrust, plank, cardio…), ricerca con
   autocompletamento per nome e attrezzatura, filtro per gruppo muscolare.
@@ -36,8 +37,10 @@ del browser o cambiare telefono non li cancella più.
   nel suo account. In ogni caso le foto si modificano **solo** dalla pagina Esercizi: dentro la
   creazione/modifica di un allenamento sono in sola lettura.
 - **Peso in un tocco**: in modifica la serie ha «applica a tutte» per copiare i kg su tutte le altre.
-- **Esercizi personalizzati**: creazione al volo dalla ricerca («Crea "xyz"») con gruppo muscolare e
-  attrezzatura; eliminabili se non usati.
+- **Esercizi personalizzati**: creazione e **modifica** dalla pagina Esercizi (nome, gruppo
+  muscolare, attrezzatura e misura delle serie: ripetizioni o minuti), creazione al volo dalla
+  ricerca («Crea "xyz"»); eliminabili se non usati. Il cardio nasce già in minuti, ma la misura si
+  può cambiare in entrambi i sensi.
 - **Auto-comportamento**: quando aggiungi un esercizio già fatto, vengono proposte le serie
   dell'ultima volta con il promemoria «Ultima volta …».
 - **Calendario**: vista mensile con intensità del volume per giorno, selezione giorno, elenco
@@ -86,7 +89,8 @@ Ora:
 ```
 users(id, name, created_at, updated_at,          -- id = id dell'account
       pin_hash, pin_salt, pin_length)            -- colonne legacy 1.x, non più usate
-exercises(id, user_id?, name, muscle, equipment, is_default, created_at, updated_at)
+exercises(id, user_id?, name, muscle, equipment, tracking, is_default, created_at, updated_at)
+                                                 -- tracking: 'reps' | 'time' (minuti, 2.6.0)
 workouts(id, user_id, date, name, notes, created_at, updated_at)
 workout_sets(id, workout_id, exercise_id, entry_index, set_index, reps, weight, rpe)
 workout_entry_notes(workout_id, exercise_id, entry_index, note)  -- note per esercizio (2.5.0)

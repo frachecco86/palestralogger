@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Exercise, Muscle, User } from '../lib/types'
-import { MUSCLES, MUSCLE_COLORS } from '../lib/types'
+import type { Exercise, ExerciseTracking, Muscle, User } from '../lib/types'
+import { MUSCLES, MUSCLE_COLORS, defaultTracking } from '../lib/types'
 import {
   createExercise,
   deleteExercise,
@@ -9,6 +9,7 @@ import {
   getExercisePhoto,
   listExercisePhotoMeta,
   listExercises,
+  updateExercise,
   type ExercisePhoto,
 } from '../db/queries'
 import { addExercisePhoto, canManagePhoto, removeExercisePhoto, syncPhotos } from '../lib/photo'
@@ -25,6 +26,8 @@ import {
   Field,
   Icon,
   Sheet,
+  TrackingPicker,
+  TrackingTag,
   cx,
   inputClass,
 } from '../components/ui'
@@ -43,8 +46,18 @@ export function ExercisesScreen({
   const [newName, setNewName] = useState('')
   const [newMuscle, setNewMuscle] = useState<Muscle>('Altro')
   const [newEquipment, setNewEquipment] = useState('')
+  // Ripetizioni o minuti: il cardio parte in minuti, poi si può cambiare.
+  const [newTracking, setNewTracking] = useState<ExerciseTracking>('reps')
+  const [newTrackingTouched, setNewTrackingTouched] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Modifica di un esercizio personale (nome, gruppo, attrezzatura, misura)
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editMuscle, setEditMuscle] = useState<Muscle>('Altro')
+  const [editEquipment, setEditEquipment] = useState('')
+  const [editTracking, setEditTracking] = useState<ExerciseTracking>('reps')
+  const [editErr, setEditErr] = useState<string | null>(null)
   // Foto: l'amministratore gestisce quelle della libreria, ogni utente quelle
   // degli esercizi che ha creato (vedi canManagePhoto).
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -182,8 +195,42 @@ export function ExercisesScreen({
     setNewName('')
     setNewMuscle('Altro')
     setNewEquipment('')
+    setNewTracking('reps')
+    setNewTrackingTouched(false)
     setErr(null)
     clearNewPhoto()
+  }
+
+  /** Cambiando gruppo muscolare la misura si adegua finché non la scegli a mano. */
+  function chooseNewMuscle(m: Muscle) {
+    setNewMuscle(m)
+    if (!newTrackingTouched) setNewTracking(defaultTracking(m))
+  }
+
+  function startEdit(exercise: Exercise) {
+    setEditName(exercise.name)
+    setEditMuscle(exercise.muscle)
+    setEditEquipment(exercise.equipment)
+    setEditTracking(exercise.tracking)
+    setEditErr(null)
+    setEditing(true)
+  }
+
+  function handleEdit() {
+    if (!detail) return
+    try {
+      const updated = updateExercise(user.id, detail.id, {
+        name: editName,
+        muscle: editMuscle,
+        equipment: editEquipment,
+        tracking: editTracking,
+      })
+      setDetail(updated)
+      setEditing(false)
+      toast('Esercizio aggiornato')
+    } catch (e) {
+      setEditErr(e instanceof Error ? e.message : 'Errore')
+    }
   }
 
   function chooseNewPhoto(file: File) {
@@ -209,7 +256,7 @@ export function ExercisesScreen({
     // il File resta valido anche dopo aver liberato l'anteprima
     const file = newPhoto?.file ?? null
     try {
-      const ex = createExercise(user.id, newName, newMuscle, newEquipment)
+      const ex = createExercise(user.id, newName, newMuscle, newEquipment, newTracking)
       toast('Esercizio aggiunto')
       resetCreate()
       setDetail(ex)
@@ -235,7 +282,11 @@ export function ExercisesScreen({
     () => (detail ? getExerciseHistory(user.id, detail.id, 12) : []),
     [user.id, detail?.id],
   )
-  const maxHistory = Math.max(1, ...history.map((h) => h.bestWeight))
+  // il cardio non ha carichi: il grafico mostra i minuti per sessione
+  const timedDetail = detail?.tracking === 'time'
+  const historyValue = (h: { bestWeight: number; reps: number }) =>
+    timedDetail ? h.reps : h.bestWeight
+  const maxHistory = Math.max(1, ...history.map(historyValue))
 
   return (
     <div className="mx-auto w-full max-w-md px-4 pt-[max(16px,env(safe-area-inset-top))]">
@@ -324,6 +375,7 @@ export function ExercisesScreen({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="truncate text-[13px] font-medium">{e.name}</span>
+                          <TrackingTag tracking={e.tracking} />
                           {!e.isDefault && <Badge color="#7CFFB2">tuo</Badge>}
                         </div>
                         <p className="text-[10.5px] text-faint">
@@ -347,7 +399,14 @@ export function ExercisesScreen({
       )}
 
       {/* dettaglio esercizio */}
-      <Sheet open={!!detail} onClose={() => setDetail(null)} title={detail?.name}>
+      <Sheet
+        open={!!detail}
+        onClose={() => {
+          setDetail(null)
+          setEditing(false)
+        }}
+        title={detail?.name}
+      >
         {detail && (
           <div className="pb-5">
             <ExercisePhotoLarge photo={photos[detail.id]} name={detail.name} className="h-56" />
@@ -390,6 +449,7 @@ export function ExercisesScreen({
                 {detail.muscle}
                 {detail.equipment ? ` · ${detail.equipment}` : ''}
               </span>
+              {detail.tracking === 'time' && <TrackingTag tracking={detail.tracking} />}
               {!detail.isDefault && <Badge color="#7CFFB2">personalizzato</Badge>}
             </div>
 
@@ -397,11 +457,25 @@ export function ExercisesScreen({
               {[
                 { l: 'Sessioni', v: String(detailAgg?.sessions ?? 0) },
                 { l: 'Serie', v: String(detailAgg?.sets ?? 0) },
-                { l: 'Volume', v: formatKg(detailAgg?.volume ?? 0) },
-                {
-                  l: 'Max',
-                  v: detailAgg?.bestWeight ? `${formatWeight(detailAgg.bestWeight)} kg` : '—',
-                },
+                ...(timedDetail
+                  ? [
+                      { l: 'Minuti', v: `${detailAgg?.totalReps ?? 0}` },
+                      {
+                        l: 'Media',
+                        v: detailAgg?.sessions
+                          ? `${Math.round((detailAgg.totalReps ?? 0) / detailAgg.sessions)} min`
+                          : '—',
+                      },
+                    ]
+                  : [
+                      { l: 'Volume', v: formatKg(detailAgg?.volume ?? 0) },
+                      {
+                        l: 'Max',
+                        v: detailAgg?.bestWeight
+                          ? `${formatWeight(detailAgg.bestWeight)} kg`
+                          : '—',
+                      },
+                    ]),
               ].map((s) => (
                 <div key={s.l} className="px-1 py-2 text-center">
                   <p className="text-[12px] font-bold tabular leading-tight">{s.v}</p>
@@ -413,15 +487,19 @@ export function ExercisesScreen({
             {history.length > 0 && (
               <div className="mt-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-                  Carico massimo per sessione
+                  {timedDetail ? 'Minuti per sessione' : 'Carico massimo per sessione'}
                 </p>
                 <div className="mt-2 flex h-20 items-end gap-1 rounded-xl border border-line bg-surface2/40 p-2">
                   {history.map((h) => (
                     <div key={h.date} className="flex flex-1 flex-col items-center justify-end gap-1">
                       <div
                         className="w-full rounded-sm bg-lime/70"
-                        style={{ height: Math.max(2, Math.round((h.bestWeight / maxHistory) * 52)) }}
-                        title={`${formatDate(h.date)}: ${formatWeight(h.bestWeight)} kg`}
+                        style={{ height: Math.max(2, Math.round((historyValue(h) / maxHistory) * 52)) }}
+                        title={`${formatDate(h.date)}: ${
+                          timedDetail
+                            ? `${h.reps} min`
+                            : `${formatWeight(h.bestWeight)} kg`
+                        }`}
                       />
                       <span className="text-[8px] tabular text-faint">{h.date.slice(8)}</span>
                     </div>
@@ -429,9 +507,15 @@ export function ExercisesScreen({
                 </div>
                 {history.length >= 2 && (
                   <p className="mt-1.5 text-[10.5px] text-faint">
-                    {formatWeight(history[0].bestWeight)} kg ({formatDate(history[0].date)}) →{' '}
-                    {formatWeight(history[history.length - 1].bestWeight)} kg (
-                    {formatDate(history[history.length - 1].date)})
+                    {timedDetail
+                      ? `${history[0].reps} min (${formatDate(history[0].date)}) → ${
+                          history[history.length - 1].reps
+                        } min (${formatDate(history[history.length - 1].date)})`
+                      : `${formatWeight(history[0].bestWeight)} kg (${formatDate(
+                          history[0].date,
+                        )}) → ${formatWeight(history[history.length - 1].bestWeight)} kg (${formatDate(
+                          history[history.length - 1].date,
+                        )})`}
                   </p>
                 )}
               </div>
@@ -444,9 +528,18 @@ export function ExercisesScreen({
             )}
 
             <div className="mt-4 flex gap-2">
-              <Button full onClick={() => onQuickAdd(detail.id)}>
+              <Button className="flex-1" onClick={() => onQuickAdd(detail.id)}>
                 <Icon name="plus" size={16} /> Usa in allenamento
               </Button>
+              {!detail.isDefault && (
+                <Button
+                  variant="secondary"
+                  onClick={() => startEdit(detail)}
+                  ariaLabel={`Modifica ${detail.name}`}
+                >
+                  <Icon name="edit" size={16} /> Modifica
+                </Button>
+              )}
               {!detail.isDefault && (
                 <Button variant="danger" onClick={() => setConfirmDelete(true)} aria-label="Elimina">
                   <Icon name="trash" size={16} />
@@ -500,12 +593,29 @@ export function ExercisesScreen({
             </span>
             <div className="flex flex-wrap gap-1.5">
               {MUSCLES.map((m) => (
-                <Chip key={m} active={newMuscle === m} dot={MUSCLE_COLORS[m]} onClick={() => setNewMuscle(m)}>
+                <Chip
+                  key={m}
+                  active={newMuscle === m}
+                  dot={MUSCLE_COLORS[m]}
+                  onClick={() => chooseNewMuscle(m)}
+                >
                   {m}
                 </Chip>
               ))}
             </div>
           </div>
+          <TrackingPicker
+            value={newTracking}
+            onChange={(value) => {
+              setNewTracking(value)
+              setNewTrackingTouched(true)
+            }}
+            hint={
+              newMuscle === 'Cardio'
+                ? 'Cardio: in allenamento si scelgono i minuti, senza ripetizioni né peso.'
+                : 'Con «Minuti» l’esercizio si registra a tempo (cardio o lavoro isometrico).'
+            }
+          />
           <Field label="Attrezzatura" hint="facoltativa">
             <input
               className={inputClass}
@@ -557,6 +667,59 @@ export function ExercisesScreen({
           {err && <p className="text-[12.5px] text-danger">{err}</p>}
           <Button size="lg" full onClick={handleCreate} disabled={newName.trim().length < 2}>
             Crea esercizio
+          </Button>
+        </div>
+      </Sheet>
+
+      <Sheet open={editing} onClose={() => setEditing(false)} title="Modifica esercizio">
+        <div className="space-y-4 pb-5">
+          <Field label="Nome">
+            <input
+              className={inputClass}
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              maxLength={48}
+              autoFocus
+            />
+          </Field>
+          <div>
+            <span className="mb-1.5 block text-[12px] font-medium uppercase tracking-wide text-muted">
+              Gruppo muscolare
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {MUSCLES.map((m) => (
+                <Chip
+                  key={m}
+                  active={editMuscle === m}
+                  dot={MUSCLE_COLORS[m]}
+                  onClick={() => setEditMuscle(m)}
+                >
+                  {m}
+                </Chip>
+              ))}
+            </div>
+          </div>
+          <Field label="Attrezzatura" hint="facoltativa">
+            <input
+              className={inputClass}
+              value={editEquipment}
+              onChange={(e) => setEditEquipment(e.target.value)}
+              placeholder="Bilanciere, manubri, macchina…"
+              maxLength={32}
+            />
+          </Field>
+          <TrackingPicker
+            value={editTracking}
+            onChange={setEditTracking}
+            hint={
+              editTracking === 'time'
+                ? 'In allenamento le serie diventano minuti: niente ripetizioni, niente peso.'
+                : 'In allenamento le serie restano ripetizioni con il peso.'
+            }
+          />
+          {editErr && <p className="text-[12.5px] text-danger">{editErr}</p>}
+          <Button size="lg" full onClick={handleEdit} disabled={editName.trim().length < 2}>
+            Salva modifiche
           </Button>
         </div>
       </Sheet>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Exercise, Muscle } from '../lib/types'
-import { MUSCLES, MUSCLE_COLORS } from '../lib/types'
+import type { Exercise, ExerciseTracking, Muscle } from '../lib/types'
+import { MUSCLES, MUSCLE_COLORS, defaultTracking } from '../lib/types'
 import {
   createExercise,
   getExerciseAggregates,
@@ -10,7 +10,7 @@ import {
   type ExercisePhoto,
 } from '../db/queries'
 import { syncPhotos } from '../lib/photo'
-import { Badge, Button, Chip, Icon, Sheet, cx, inputClass } from './ui'
+import { Badge, Button, Chip, Icon, Sheet, TrackingPicker, TrackingTag, cx, inputClass } from './ui'
 import { formatDate } from '../lib/dates'
 import { useLiveData, toast } from '../lib/live'
 import { ExerciseThumb } from './ExercisePhoto'
@@ -34,6 +34,9 @@ export function ExercisePicker({
   const [newName, setNewName] = useState('')
   const [newMuscle, setNewMuscle] = useState<Muscle>('Altro')
   const [newEquipment, setNewEquipment] = useState('')
+  // il cardio nasce in minuti: si può cambiare prima di crearlo
+  const [newTracking, setNewTracking] = useState<ExerciseTracking>('reps')
+  const [newTrackingTouched, setNewTrackingTouched] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   const exercises = useLiveData(() => listExercises(userId), [userId])
@@ -99,6 +102,8 @@ export function ExercisePicker({
     setNewName('')
     setNewMuscle('Altro')
     setNewEquipment('')
+    setNewTracking('reps')
+    setNewTrackingTouched(false)
     setErr(null)
   }
 
@@ -115,14 +120,22 @@ export function ExercisePicker({
 
   function startCreate() {
     setNewName(query.trim())
-    setNewMuscle(muscle === 'Tutti' ? 'Altro' : muscle)
+    const initialMuscle = muscle === 'Tutti' ? 'Altro' : muscle
+    setNewMuscle(initialMuscle)
+    setNewTracking(defaultTracking(initialMuscle))
+    setNewTrackingTouched(false)
     setCreating(true)
     setErr(null)
   }
 
+  function chooseNewMuscle(m: Muscle) {
+    setNewMuscle(m)
+    if (!newTrackingTouched) setNewTracking(defaultTracking(m))
+  }
+
   function confirmCreate() {
     try {
-      const ex = createExercise(userId, newName, newMuscle, newEquipment)
+      const ex = createExercise(userId, newName, newMuscle, newEquipment, newTracking)
       toast('Esercizio creato')
       pick(ex)
     } catch (e) {
@@ -166,13 +179,26 @@ export function ExercisePicker({
                   key={m}
                   active={newMuscle === m}
                   dot={MUSCLE_COLORS[m]}
-                  onClick={() => setNewMuscle(m)}
+                  onClick={() => chooseNewMuscle(m)}
                 >
                   {m}
                 </Chip>
               ))}
             </div>
           </div>
+
+          <TrackingPicker
+            value={newTracking}
+            onChange={(value) => {
+              setNewTracking(value)
+              setNewTrackingTouched(true)
+            }}
+            hint={
+              newMuscle === 'Cardio'
+                ? 'Cardio: in allenamento si scelgono i minuti, senza ripetizioni né peso.'
+                : 'Con «Minuti» l’esercizio si registra a tempo.'
+            }
+          />
 
           <label className="block">
             <span className="mb-1.5 block text-[12px] font-medium uppercase tracking-wide text-muted">
@@ -285,6 +311,7 @@ export function ExercisePicker({
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5">
                           <span className="truncate text-[13.5px] font-medium">{e.name}</span>
+                          <TrackingTag tracking={e.tracking} />
                           {!e.isDefault && <Badge color="#7CFFB2">tuo</Badge>}
                         </span>
                         <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-faint">

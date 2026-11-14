@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
+import type { ExerciseTracking } from '../lib/types'
+import { TRACKING_LABEL } from '../lib/types'
 
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
@@ -391,6 +393,46 @@ export function Badge({ children, color }: { children: ReactNode; color?: string
     >
       {children}
     </span>
+  )
+}
+
+/** Etichetta «minuti» accanto agli esercizi cardiovascolari. */
+export function TrackingTag({ tracking }: { tracking: ExerciseTracking }) {
+  if (tracking !== 'time') return null
+  return (
+    <Badge color="#5FD4FF">
+      <span className="inline-flex items-center gap-0.5">
+        <Icon name="clock" size={10} /> minuti
+      </span>
+    </Badge>
+  )
+}
+
+/** Scelta della misura delle serie: ripetizioni oppure minuti (cardio). */
+export function TrackingPicker({
+  value,
+  onChange,
+  hint,
+}: {
+  value: ExerciseTracking
+  onChange: (value: ExerciseTracking) => void
+  hint?: string
+}) {
+  return (
+    <div>
+      <span className="mb-1.5 block text-[12px] font-medium uppercase tracking-wide text-muted">
+        Misura delle serie
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {(['reps', 'time'] as ExerciseTracking[]).map((option) => (
+          <Chip key={option} active={value === option} onClick={() => onChange(option)}>
+            <Icon name={option === 'time' ? 'clock' : 'list'} size={12} />
+            {TRACKING_LABEL[option]}
+          </Chip>
+        ))}
+      </div>
+      {hint && <p className="mt-1.5 text-[10.5px] leading-relaxed text-faint">{hint}</p>}
+    </div>
   )
 }
 

@@ -135,6 +135,15 @@ function migrate(database: Database) {
     }
     database.exec("UPDATE exercises SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''")
 
+    // 2.6.0: gli esercizi diventano «a ripetizioni» o «a minuti». Il cardio
+    // parte in minuti, tutto il resto in ripetizioni.
+    if (columns.length > 0 && !columns.includes('tracking')) {
+      database.exec("ALTER TABLE exercises ADD COLUMN tracking TEXT NOT NULL DEFAULT ''")
+    }
+    database.exec(
+      "UPDATE exercises SET tracking = CASE WHEN muscle = 'Cardio' THEN 'time' ELSE 'reps' END WHERE tracking IS NULL OR tracking = ''",
+    )
+
     const userInfo = database.exec('PRAGMA table_info(users)')
     const userColumns = userInfo[0]?.values.map((row) => String(row[1])) ?? []
     if (userColumns.length > 0 && !userColumns.includes('updated_at')) {
@@ -159,10 +168,10 @@ function migrate(database: Database) {
 function seedDefaults(database: Database) {
   const now = new Date().toISOString()
   const stmt = database.prepare(
-    'INSERT OR IGNORE INTO exercises (id, user_id, name, muscle, equipment, is_default, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, 1, ?, ?)',
+    'INSERT OR IGNORE INTO exercises (id, user_id, name, muscle, equipment, tracking, is_default, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, 1, ?, ?)',
   )
   for (const ex of SEED_EXERCISES) {
-    stmt.run([ex.id, ex.name, ex.muscle, ex.equipment, now, now])
+    stmt.run([ex.id, ex.name, ex.muscle, ex.equipment, ex.tracking, now, now])
   }
   stmt.free()
 }

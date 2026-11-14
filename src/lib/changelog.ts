@@ -10,6 +10,18 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.6.0',
+    title: 'Il cardio si misura in minuti',
+    items: [
+      'Gli esercizi cardio (tapis roulant, cyclette, vogatore, salto con la corda…) ora si registrano in minuti: al posto delle ripetizioni trovi un campo «Minuti», senza il peso.',
+      'Accanto al nome dell’esercizio compare l’etichetta «minuti», così riconosci subito come verrà misurata la serie: funziona anche nella ricerca degli esercizi e nell’immagine condivisa.',
+      'Il totale dell’allenamento non conta il cardio nel volume (kg): i minuti non sporcano più i carichi.',
+      'Puoi scegliere la misura quando crei un esercizio e cambiarla quando vuoi dalla pagina Esercizi: da «Ripetizioni» a «Minuti» e viceversa.',
+      'Nella pagina Esercizi c’è ora «Modifica»: nome, gruppo muscolare, attrezzatura e misura si cambiano anche dopo aver creato l’esercizio.',
+      'La scelta viaggia con il tuo account: la ritrovi sincronizzata sugli altri telefoni e anche gli amici vedono «min» al posto delle ripetizioni.',
+    ],
+  },
+  {
     version: '2.5.0',
     title: 'Una nota per ogni esercizio',
     items: [

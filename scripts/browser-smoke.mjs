@@ -363,6 +363,27 @@ if (buttons().some((b) => aria(b).startsWith('Rimuovi foto')))
 window.document.querySelector('[aria-label="Chiudi"]')?.click()
 await wait(400)
 
+// cardio: etichetta «minuti» e serie a tempo invece che a ripetizioni
+await clickText('Tapis roulant')
+await wait(700)
+if (!body().includes('minuti')) throw new Error('etichetta «minuti» mancante nel dettaglio del cardio')
+await clickText('Usa in allenamento')
+await wait(800)
+if (!window.document.querySelector('input[aria-label="minuti serie 1"]'))
+  throw new Error('campo minuti mancante per un esercizio cardio')
+if (window.document.querySelector('input[aria-label="peso serie 1"]'))
+  throw new Error('peso mostrato per un esercizio cardio')
+if (!body().includes('Minuti')) throw new Error('intestazione «Minuti» mancante nelle serie')
+window.document.querySelector('[aria-label="Torna indietro"]')?.click()
+await wait(600)
+await clickText('Esci senza salvare')
+await wait(800)
+if (!body().includes('Ciao, Marco')) throw new Error('uscita dall’allenamento cardio fallita')
+await clickText('Esercizi')
+await wait(800)
+if (!body().includes('disponibili')) throw new Error('ritorno alla libreria dopo il cardio fallito')
+console.log('9b. cardio a minuti ok')
+
 // ogni utente può creare un esercizio con la propria foto
 await clickText('Nuovo')
 await wait(500)
@@ -380,6 +401,20 @@ if (!buttons().some((b) => aria(b).startsWith('Aggiungi foto a Pressa sperimenta
   throw new Error('l’autore non può aggiungere la foto del suo esercizio')
 window.document.querySelector('[aria-label="Chiudi"]')?.click()
 await wait(400)
+
+// modifica dell’esercizio: la misura passa da ripetizioni a minuti
+await clickText('Pressa sperimentale')
+await wait(600)
+await clickText('Modifica', { exact: true })
+await wait(500)
+await clickText('Minuti', { exact: true })
+await wait(250)
+await clickText('Salva modifiche')
+await wait(800)
+if (!body().includes('minuti')) throw new Error('modifica della misura a minuti non applicata')
+window.document.querySelector('[aria-label="Chiudi"]')?.click()
+await wait(400)
+console.log('9c. modifica misura esercizio ok')
 
 // amici (API mockata; in LIVE richiederebbe account reali)
 if (!LIVE) {

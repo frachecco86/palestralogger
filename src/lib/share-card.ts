@@ -1,4 +1,4 @@
-import type { Muscle, WorkoutDetail } from './types'
+import type { ExerciseTracking, Muscle, WorkoutDetail } from './types'
 import { MUSCLE_COLORS } from './types'
 import { formatDateLong } from './dates'
 import { formatKg, formatWeight } from './format'
@@ -222,6 +222,7 @@ interface SetGroup {
 interface CardExercise {
   name: string
   muscle: Muscle
+  tracking: ExerciseTracking
   color: string
   sets: number
   groups: SetGroup[]
@@ -272,6 +273,7 @@ function buildExercises(workout: WorkoutDetail): CardExercise[] {
     return {
       name: entry.exercise.name,
       muscle: entry.exercise.muscle,
+      tracking: entry.exercise.tracking,
       color: MUSCLE_COLORS[entry.exercise.muscle] ?? MUTED,
       sets: sets.length,
       groups: buildGroups(sets),
@@ -283,14 +285,17 @@ function buildExercises(workout: WorkoutDetail): CardExercise[] {
 /**
  * Riepilogo dei carichi di un esercizio, es. «3 da 10 kg · 2 da 40 kg».
  * Per gli esercizi a corpo libero mostra le ripetizioni: «3 × 12».
+ * Per il cardio mostra i minuti: «3 × 20 min».
  */
 function setsDetail(exercise: CardExercise): string {
   if (exercise.groups.length === 0) return 'nessuna serie'
+  const timed = exercise.tracking === 'time'
   return exercise.groups
     .map((group) => {
-      if (group.weight > 0) return `${group.count} da ${formatWeight(group.weight)} kg`
       const uniform = group.reps.every((reps) => reps === group.reps[0])
       const reps = uniform ? `${group.reps[0]}` : group.reps.join('/')
+      if (timed) return `${group.count} × ${reps} min`
+      if (group.weight > 0) return `${group.count} da ${formatWeight(group.weight)} kg`
       return `${group.count} × ${reps} rip`
     })
     .join(' · ')

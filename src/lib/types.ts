@@ -43,12 +43,38 @@ export interface User {
   updatedAt: string
 }
 
+/**
+ * Come si misura una serie:
+ * - `reps`: ripetizioni con peso (panca, squat…);
+ * - `time`: minuti (cardio: tapis roulant, cyclette, vogatore…).
+ */
+export type ExerciseTracking = 'reps' | 'time'
+
+/** Etichetta breve della misura, es. «rip» / «min». */
+export const TRACKING_SHORT: Record<ExerciseTracking, string> = {
+  reps: 'rip',
+  time: 'min',
+}
+
+/** Etichetta estesa, es. «Ripetizioni» / «Minuti». */
+export const TRACKING_LABEL: Record<ExerciseTracking, string> = {
+  reps: 'Ripetizioni',
+  time: 'Minuti',
+}
+
+/** Il cardio parte in minuti; si può comunque cambiare a mano. */
+export function defaultTracking(muscle: Muscle): ExerciseTracking {
+  return muscle === 'Cardio' ? 'time' : 'reps'
+}
+
 export interface Exercise {
   id: string
   userId: string | null
   name: string
   muscle: Muscle
   equipment: string
+  /** Ripetizioni o minuti (vedi ExerciseTracking). */
+  tracking: ExerciseTracking
   isDefault: boolean
   createdAt: string
   updatedAt: string

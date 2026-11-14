@@ -1,5 +1,6 @@
 import { query, queryOne, tx } from './db'
-import type { Muscle } from '../lib/types'
+import type { ExerciseTracking, Muscle } from '../lib/types'
+import { defaultTracking } from '../lib/types'
 import { addDays, todayISO } from '../lib/dates'
 
 export interface SyncProfile {
@@ -18,6 +19,8 @@ export interface SyncExercise {
   name: string
   muscle: Muscle
   equipment: string
+  /** 'reps' oppure 'time': assente nei payload creati prima della 2.6.0. */
+  tracking?: ExerciseTracking
   createdAt: string
   updatedAt: string
 }
@@ -77,6 +80,7 @@ interface RawExercise {
   name: string
   muscle: string
   equipment: string
+  tracking: string | null
   created_at: string
   updated_at: string
 }
@@ -128,6 +132,10 @@ export function buildSyncPayload(userId: string): SyncPayload {
     name: e.name,
     muscle: e.muscle as Muscle,
     equipment: e.equipment,
+    tracking:
+      e.tracking === 'time' || e.tracking === 'reps'
+        ? (e.tracking as ExerciseTracking)
+        : defaultTracking(e.muscle as Muscle),
     createdAt: e.created_at,
     updatedAt: e.updated_at || e.created_at,
   }))
@@ -273,12 +281,23 @@ export function applySyncPayload(userId: string, remote: SyncPayload | null): Sy
         const localUpdated = localExercises.get(e.id)
         if (localUpdated && localUpdated >= e.updatedAt) continue
         db.run(
-          `INSERT INTO exercises (id, user_id, name, muscle, equipment, is_default, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+          `INSERT INTO exercises (id, user_id, name, muscle, equipment, tracking, is_default, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              name = excluded.name, muscle = excluded.muscle, equipment = excluded.equipment,
-             updated_at = excluded.updated_at`,
-          [e.id, userId, e.name, e.muscle, e.equipment, e.createdAt, e.updatedAt || e.createdAt],
+             tracking = excluded.tracking, updated_at = excluded.updated_at`,
+          [
+            e.id,
+            userId,
+            e.name,
+            e.muscle,
+            e.equipment,
+            e.tracking === 'time' || e.tracking === 'reps'
+              ? e.tracking
+              : defaultTracking(e.muscle as Muscle),
+            e.createdAt,
+            e.updatedAt || e.createdAt,
+          ],
         )
       }
 

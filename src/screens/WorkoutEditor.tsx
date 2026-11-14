@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Exercise, WorkoutEntryInput } from '../lib/types'
-import { MUSCLE_COLORS } from '../lib/types'
+import type { Exercise, ExerciseTracking, WorkoutEntryInput } from '../lib/types'
+import { MUSCLE_COLORS, TRACKING_SHORT } from '../lib/types'
 import {
   MAX_ENTRY_NOTE,
   deleteWorkout,
@@ -15,7 +15,7 @@ import { addDays, formatDate, todayISO } from '../lib/dates'
 import { formatKg, plural } from '../lib/format'
 import { toast } from '../lib/live'
 import { syncPhotos } from '../lib/photo'
-import { Button, Card, Chip, Icon, Sheet, cx } from '../components/ui'
+import { Button, Card, Chip, Icon, Sheet, TrackingTag, cx } from '../components/ui'
 import { ExercisePicker } from '../components/ExercisePicker'
 import { ExercisePhotoSheet, ExerciseThumb } from '../components/ExercisePhoto'
 import { ShareWorkoutSheet } from '../components/ShareWorkoutSheet'
@@ -36,6 +36,24 @@ interface EditorEntry {
 
 let keySeq = 0
 const key = () => `e${++keySeq}`
+
+/** Ripetizioni o minuti: gli esercizi cardio si misurano a tempo. */
+const isTimed = (exercise: { tracking: ExerciseTracking }) => exercise.tracking === 'time'
+
+/** Riepilogo compatto delle serie precedenti, adatto alla misura dell'esercizio. */
+function describeSets(
+  sets: Array<{ reps: number; weight: number }>,
+  tracking: ExerciseTracking,
+): string {
+  return sets
+    .slice(0, 3)
+    .map((s) =>
+      tracking === 'time'
+        ? `${s.reps} min`
+        : `${s.weight > 0 ? `${s.weight} kg` : 'corpo libero'}×${s.reps}`,
+    )
+    .join(' · ')
+}
 
 function NumInput({
   value,
@@ -172,7 +190,11 @@ export function WorkoutEditor({
 
   const totalSets = entries.reduce((s, e) => s + e.sets.length, 0)
   const totalVolume = entries.reduce(
-    (s, e) => s + e.sets.reduce((x, set) => x + set.reps * set.weight, 0),
+    (s, e) =>
+      s +
+      (isTimed(e.exercise)
+        ? 0
+        : e.sets.reduce((x, set) => x + set.reps * set.weight, 0)),
     0,
   )
   const muscles = useMemo(
@@ -220,13 +242,17 @@ export function WorkoutEditor({
     const photo = getExercisePhoto(userId, exercise.id)
     if (photo) setPhotos((prev) => ({ ...prev, [exercise.id]: photo }))
     const last = lastPerformance(userId, exercise.id)
-    const baseSets = last && last.date !== date
+    const timed = isTimed(exercise)
+    const repeatLast = last && last.date !== date
+    const baseSets = repeatLast
       ? last.sets.slice(0, 5)
-      : [
-          { reps: 10, weight: 0 },
-          { reps: 10, weight: 0 },
-          { reps: 10, weight: 0 },
-        ]
+      : timed
+        ? [{ reps: 20, weight: 0 }]
+        : [
+            { reps: 10, weight: 0 },
+            { reps: 10, weight: 0 },
+            { reps: 10, weight: 0 },
+          ]
     setEntries((prev) => [
       ...prev,
       {
@@ -234,11 +260,8 @@ export function WorkoutEditor({
         exercise,
         notes: '',
         sets: baseSets.map((s) => ({ key: key(), reps: s.reps, weight: s.weight })),
-        lastHint: last && last.date !== date
-          ? `Ultima volta ${formatDate(last.date)}: ${last.sets
-              .slice(0, 3)
-              .map((s) => `${s.weight > 0 ? `${s.weight} kg` : 'corpo libero'}×${s.reps}`)
-              .join(' · ')}`
+        lastHint: repeatLast
+          ? `Ultima volta ${formatDate(last.date)}: ${describeSets(last.sets, exercise.tracking)}`
           : undefined,
       },
     ])
@@ -310,7 +333,11 @@ export function WorkoutEditor({
     const payload: WorkoutEntryInput[] = entries.map((e) => ({
       exerciseId: e.exercise.id,
       notes: e.notes,
-      sets: e.sets.map((s) => ({ reps: s.reps, weight: s.weight })),
+      sets: e.sets.map((s) => ({
+        reps: s.reps,
+        // il cardio non ha carico: i minuti restano puliti anche nei totali
+        weight: isTimed(e.exercise) ? 0 : s.weight,
+      })),
     }))
     if (payload.length === 0) {
       setError('Aggiungi almeno un esercizio')
@@ -506,7 +533,10 @@ export function WorkoutEditor({
                   aria-expanded={!collapsed.has(entry.key)}
                   className="min-w-0 flex-1 text-left"
                 >
-                  <p className="truncate text-[13.5px] font-semibold">{entry.exercise.name}</p>
+                  <p className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate text-[13.5px] font-semibold">{entry.exercise.name}</span>
+                    <TrackingTag tracking={entry.exercise.tracking} />
+                  </p>
                   <p className="text-[10.5px] text-faint">
                     {entry.exercise.muscle}
                     {entry.exercise.equipment ? ` · ${entry.exercise.equipment}` : ''}
@@ -525,7 +555,9 @@ export function WorkoutEditor({
                       {plural(entry.sets.length, 'serie', 'serie')}
                     </p>
                     <p className="text-[10px] text-faint tabular">
-                      {formatKg(entry.sets.reduce((x, s) => x + s.reps * s.weight, 0))}
+                      {isTimed(entry.exercise)
+                        ? `${entry.sets.reduce((x, s) => x + s.reps, 0)} min`
+                        : formatKg(entry.sets.reduce((x, s) => x + s.reps * s.weight, 0))}
                     </p>
                   </div>
                 )}
@@ -573,10 +605,16 @@ export function WorkoutEditor({
 
                 <div className="mb-1 flex items-center gap-2 pl-0.5 text-[9px] uppercase tracking-wide text-faint">
                   <span className="w-5">#</span>
-                  <span className="w-[88px] text-center">Reps</span>
-                  <span className="w-2" />
-                  <span className="w-[96px] text-center">Peso kg</span>
-                  {editMode && entry.sets.length > 1 && <span className="w-[60px]" />}
+                  <span className="w-[88px] text-center">
+                    {isTimed(entry.exercise) ? 'Minuti' : 'Reps'}
+                  </span>
+                  {!isTimed(entry.exercise) && (
+                    <>
+                      <span className="w-2" />
+                      <span className="w-[96px] text-center">Peso kg</span>
+                      {editMode && entry.sets.length > 1 && <span className="w-[60px]" />}
+                    </>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -589,9 +627,13 @@ export function WorkoutEditor({
                         value={set.reps}
                         step={1}
                         min={0}
-                        max={200}
+                        max={isTimed(entry.exercise) ? 600 : 200}
                         width="w-8"
-                        label={`ripetizioni serie ${setIdx + 1}`}
+                        label={
+                          isTimed(entry.exercise)
+                            ? `minuti serie ${setIdx + 1}`
+                            : `ripetizioni serie ${setIdx + 1}`
+                        }
                         readOnly={!editMode}
                         onChange={(v) =>
                           updateEntry(entry.key, (e) => ({
@@ -600,7 +642,10 @@ export function WorkoutEditor({
                           }))
                         }
                       />
-                      <span className="text-[11px] text-faint">×</span>
+                      <span className="text-[11px] text-faint">
+                        {isTimed(entry.exercise) ? TRACKING_SHORT.time : '×'}
+                      </span>
+                      {!isTimed(entry.exercise) && (
                       <NumInput
                         value={set.weight}
                         step={2.5}
@@ -616,7 +661,8 @@ export function WorkoutEditor({
                           }))
                         }
                       />
-                      {editMode && entry.sets.length > 1 && (
+                      )}
+                      {!isTimed(entry.exercise) && editMode && entry.sets.length > 1 && (
                         <button
                           type="button"
                           onClick={() => {
@@ -658,7 +704,10 @@ export function WorkoutEditor({
                     type="button"
                     onClick={() =>
                       updateEntry(entry.key, (e) => {
-                        const last = e.sets[e.sets.length - 1] ?? { reps: 10, weight: 0 }
+                        const last = e.sets[e.sets.length - 1] ?? {
+                          reps: isTimed(e.exercise) ? 20 : 10,
+                          weight: 0,
+                        }
                         return {
                           ...e,
                           sets: [...e.sets, { key: key(), reps: last.reps, weight: last.weight }],
