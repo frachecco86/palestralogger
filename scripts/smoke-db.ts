@@ -295,6 +295,39 @@ async function main() {
   deleteWorkout(user.id, importedId)
   deleteExercise(user.id, kayak.exercise.id)
 
+  // riordino degli esercizi: l'ordine dell'array diventa entry_index
+  const orderWorkoutId = saveWorkout(user.id, {
+    date: '2026-10-31',
+    entries: [
+      { exerciseId: 'def-panca-piana', notes: 'prima', sets: [{ reps: 5, weight: 50 }] },
+      { exerciseId: 'def-leg-press', notes: 'seconda', sets: [{ reps: 5, weight: 100 }] },
+      { exerciseId: custom.id, notes: 'terza', sets: [{ reps: 5, weight: 30 }] },
+    ],
+  })
+  const initialOrder = getWorkout(user.id, orderWorkoutId)?.entries.map((e) => e.exercise.id)
+  if (initialOrder?.join('|') !== ['def-panca-piana', 'def-leg-press', custom.id].join('|')) {
+    throw new Error('ordine iniziale degli esercizi errato')
+  }
+  saveWorkout(user.id, {
+    id: orderWorkoutId,
+    date: '2026-10-31',
+    entries: [
+      { exerciseId: custom.id, notes: 'terza', sets: [{ reps: 5, weight: 30 }] },
+      { exerciseId: 'def-panca-piana', notes: 'prima', sets: [{ reps: 5, weight: 50 }] },
+      { exerciseId: 'def-leg-press', notes: 'seconda', sets: [{ reps: 5, weight: 100 }] },
+    ],
+  })
+  const reordered = getWorkout(user.id, orderWorkoutId)
+  const newOrder = reordered?.entries.map((e) => e.exercise.id)
+  if (newOrder?.join('|') !== [custom.id, 'def-panca-piana', 'def-leg-press'].join('|')) {
+    throw new Error('riordino degli esercizi non salvato: ' + JSON.stringify(newOrder))
+  }
+  if (reordered?.entries[0].notes !== 'terza' || reordered?.entries[1].notes !== 'prima') {
+    throw new Error('le note non seguono l’esercizio riordinato')
+  }
+  console.log('riordino esercizi: OK')
+  deleteWorkout(user.id, orderWorkoutId)
+
   // aggiornando l'allenamento la nota si modifica e si può svuotare
   saveWorkout(user.id, {
     id,

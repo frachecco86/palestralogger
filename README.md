@@ -21,6 +21,8 @@ del browser o cambiare telefono non li cancella più.
   (tecnica, sensazioni, presa, fastidi…): si scrive in modalità «Modifica», resta visibile in lettura
   e viene sincronizzato nel cloud. Gli esercizi di un allenamento salvato restano compressi (si
   aprono con la freccia) e la cancellazione di esercizi/serie richiede la modalità «Modifica».
+  In «Modifica» le frecce su/giù **riordinano gli esercizi** (con serie e note): l'ordine viene
+  salvato e sincronizzato.
 - **Libreria esercizi**: ~60 esercizi principali pre-caricati (panca piana, leg press, squat, stacco,
   lat machine, trazioni, military press, curl, hip thrust, plank, cardio…), ricerca con
   autocompletamento per **nome, alias e attrezzatura**, filtro per gruppo muscolare. Gli esercizi

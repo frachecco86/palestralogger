@@ -295,6 +295,19 @@ export function WorkoutEditor({
     })
   }
 
+  /** Sposta l'esercizio di una posizione (ordine salvato in entry_index). */
+  function moveEntry(entryKey: string, direction: -1 | 1) {
+    setEntries((prev) => {
+      const index = prev.findIndex((e) => e.key === entryKey)
+      const target = index + direction
+      if (index < 0 || target < 0 || target >= prev.length) return prev
+      const next = [...prev]
+      const [moved] = next.splice(index, 1)
+      next.splice(target, 0, moved)
+      return next
+    })
+  }
+
   function toggleCollapsed(entryKey: string) {
     setCollapsed((prev) => {
       const next = new Set(prev)
@@ -605,6 +618,31 @@ export function WorkoutEditor({
                         ? `${entry.sets.reduce((x, s) => x + s.reps, 0)} min`
                         : formatKg(entry.sets.reduce((x, s) => x + s.reps * s.weight, 0))}
                     </p>
+                  </div>
+                )}
+
+                {editMode && entries.length > 1 && (
+                  <div className="flex shrink-0 flex-col items-center">
+                    <button
+                      type="button"
+                      onClick={() => moveEntry(entry.key, -1)}
+                      disabled={entries[0]?.key === entry.key}
+                      className="press flex h-4 w-5 items-center justify-center rounded text-faint hover:text-lime disabled:opacity-20"
+                      aria-label={`Sposta su ${entry.exercise.name}`}
+                      title="Sposta su"
+                    >
+                      <Icon name="down" size={12} className="rotate-180" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveEntry(entry.key, 1)}
+                      disabled={entries[entries.length - 1]?.key === entry.key}
+                      className="press flex h-4 w-5 items-center justify-center rounded text-faint hover:text-lime disabled:opacity-20"
+                      aria-label={`Sposta giù ${entry.exercise.name}`}
+                      title="Sposta giù"
+                    >
+                      <Icon name="down" size={12} />
+                    </button>
                   </div>
                 )}
 

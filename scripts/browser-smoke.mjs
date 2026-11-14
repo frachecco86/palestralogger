@@ -459,7 +459,28 @@ await wait(1400)
 if (!body().includes('Scheda di Luca')) throw new Error('allenamento importato non aperto')
 if (!body().includes('Panca piana')) throw new Error('esercizi importati mancanti')
 console.log('6e. import allenamento ricevuto ok')
+
+// riordino degli esercizi in modalità Modifica
+await clickText('Modifica', { exact: true })
+await wait(500)
+const exerciseOrder = () =>
+  [...window.document.querySelectorAll('button[aria-label^="Dettagli "]')].map((b) =>
+    aria(b).replace('Dettagli ', ''),
+  )
+if (exerciseOrder()[0] !== 'Panca piana')
+  throw new Error('ordine iniziale inatteso: ' + exerciseOrder().join(', '))
+const moveDown = buttons().find((b) => aria(b) === 'Sposta giù Panca piana')
+if (!moveDown) throw new Error('comando «Sposta giù» mancante')
+moveDown.click()
+await wait(400)
+if (exerciseOrder()[0] !== 'Rematore Kayak')
+  throw new Error('riordino non applicato: ' + exerciseOrder().join(', '))
+console.log('6f. riordino esercizi ok')
+
+// esco senza salvare: l'allenamento importato resta com'era
 window.document.querySelector('[aria-label="Torna indietro"]')?.click()
+await wait(500)
+await clickText('Esci senza salvare')
 await wait(800)
 if (!body().includes('Ciao, Marco')) throw new Error('ritorno alla home dopo l’import fallito')
 

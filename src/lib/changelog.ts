@@ -10,6 +10,16 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.10.0',
+    title: 'Gli esercizi, nell’ordine che vuoi',
+    items: [
+      'In un allenamento salvato puoi riordinare gli esercizi con le frecce su e giù, in modalità «Modifica».',
+      'L’ordine segue l’esercizio: le sue serie e le note si spostano con lui.',
+      'Dopo «Aggiorna» l’ordine resta salvato e arriva anche sugli altri dispositivi con la sincronizzazione.',
+      'Le frecce sono spente per il primo e per l’ultimo esercizio, così non si esce dall’elenco.',
+    ],
+  },
+  {
     version: '2.9.0',
     title: 'Allenamenti da duplicare e da condividere',
     items: [
