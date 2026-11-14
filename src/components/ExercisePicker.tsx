@@ -35,6 +35,7 @@ export function ExercisePicker({
   const [newName, setNewName] = useState('')
   const [newMuscle, setNewMuscle] = useState<Muscle>('Altro')
   const [newEquipment, setNewEquipment] = useState('')
+  const [newAlias, setNewAlias] = useState('')
   // il cardio nasce in minuti: si può cambiare prima di crearlo
   const [newTracking, setNewTracking] = useState<ExerciseTracking>('reps')
   const [newTrackingTouched, setNewTrackingTouched] = useState(false)
@@ -85,7 +86,9 @@ export function ExercisePicker({
   const filtered = useMemo(() => {
     return exercises
       .filter((e) => (muscle === 'Tutti' ? true : e.muscle === muscle))
-      .filter((e) => (q ? e.name.toLowerCase().includes(q) || e.equipment.toLowerCase().includes(q) : true))
+      .filter((e) =>
+        q ? [e.name, e.alias, e.equipment].some((value) => value.toLowerCase().includes(q)) : true,
+      )
       .sort((a, b) => {
         const la = aggMap.get(a.id)?.lastDate ?? ''
         const lb = aggMap.get(b.id)?.lastDate ?? ''
@@ -104,6 +107,7 @@ export function ExercisePicker({
     setNewName('')
     setNewMuscle('Altro')
     setNewEquipment('')
+    setNewAlias('')
     setNewTracking('reps')
     setNewTrackingTouched(false)
     setNewShared(true)
@@ -138,7 +142,7 @@ export function ExercisePicker({
 
   function confirmCreate() {
     try {
-      const ex = createExercise(userId, newName, newMuscle, newEquipment, newTracking)
+      const ex = createExercise(userId, newName, newMuscle, newEquipment, newTracking, newAlias)
       if (newShared) {
         void shareExercise(userId, ex.id)
           .then((outcome) =>
@@ -227,6 +231,22 @@ export function ExercisePicker({
             </div>
             <Toggle checked={newShared} onChange={setNewShared} label="Disponibile a tutti" />
           </div>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-medium uppercase tracking-wide text-muted">
+              Alias <span className="normal-case text-faint">(facoltativo)</span>
+            </span>
+            <input
+              className={inputClass}
+              value={newAlias}
+              onChange={(e) => setNewAlias(e.target.value)}
+              placeholder="Es. bench press, panca, distensioni…"
+              maxLength={64}
+            />
+            <span className="mt-1 block text-[10.5px] text-faint">
+              Altri nomi con cui vuoi trovarlo nella ricerca.
+            </span>
+          </label>
 
           <label className="block">
             <span className="mb-1.5 block text-[12px] font-medium uppercase tracking-wide text-muted">
@@ -348,6 +368,7 @@ export function ExercisePicker({
                         <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-faint">
                           <span>{e.muscle}</span>
                           {e.equipment && <span>· {e.equipment}</span>}
+                          {e.alias && <span className="truncate">· {e.alias}</span>}
                           {agg && <span>· ultima {formatDate(agg.lastDate)}</span>}
                           {excluded && <span>· già aggiunto</span>}
                         </span>

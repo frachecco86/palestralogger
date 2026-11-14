@@ -25,6 +25,27 @@ import {
   updateUserPin,
   renameUser,
 } from '../src/db/queries'
+import { migrateLegacyExercises } from '../src/lib/shared-exercises'
+import { readShareQueue, writeShareQueue } from '../src/lib/shared-cache'
+
+// localStorage minimale: serve per testare cache e coda della libreria comune
+const localStore = new Map<string, string>()
+;(globalThis as Record<string, unknown>).localStorage = {
+  getItem: (key: string) => localStore.get(key) ?? null,
+  setItem: (key: string, value: string) => {
+    localStore.set(key, String(value))
+  },
+  removeItem: (key: string) => {
+    localStore.delete(key)
+  },
+  clear: () => {
+    localStore.clear()
+  },
+  key: (index: number) => [...localStore.keys()][index] ?? null,
+  get length() {
+    return localStore.size
+  },
+}
 
 const today = '2026-10-26'
 
@@ -37,10 +58,24 @@ async function main() {
   const exercises = listExercises(user.id)
   console.log('esercizi disponibili:', exercises.length, '| primi:', exercises.slice(0, 3).map((e) => e.name))
   if (exercises.length < 50) throw new Error('seed esercizi mancante')
+  const deadlift = exercises.find((e) => e.id === 'def-stacco-terra')
+  if (!deadlift?.alias.includes('deadlift')) throw new Error('alias dei seed mancante')
+  console.log('alias seed stacco:', deadlift.alias)
 
-  const custom = createExercise(user.id, 'Chest press inclinata', 'Petto', 'Macchina')
-  console.log('esercizio custom:', custom.name, custom.muscle, 'default?', custom.isDefault)
+  const custom = createExercise(user.id, 'Chest press inclinata', 'Petto', 'Macchina', 'reps', 'chest press, pressa petto')
+  console.log('esercizio custom:', custom.name, custom.muscle, 'default?', custom.isDefault, '| alias:', custom.alias)
   if (custom.tracking !== 'reps') throw new Error('un esercizio con i pesi deve restare a ripetizioni')
+  if (custom.alias !== 'chest press, pressa petto') throw new Error('alias non salvato')
+
+  // alias nella ricerca e nella modifica (2.8.0)
+  if (![custom.name, custom.alias, custom.equipment].some((v) => v.toLowerCase().includes('pressa petto'))) {
+    throw new Error('la ricerca per alias non trova l’esercizio')
+  }
+  const customEdited = updateExercise(user.id, custom.id, { alias: 'chest press machine' })
+  if (customEdited.alias !== 'chest press machine') throw new Error('alias non aggiornato')
+  const syncedCustom = buildSyncPayload(user.id).exercises.find((e) => e.id === custom.id)
+  if (syncedCustom?.alias !== 'chest press machine') throw new Error('alias non sincronizzato')
+  updateExercise(user.id, custom.id, { alias: 'chest press, pressa petto' })
 
   // cardio: minuti al posto delle ripetizioni (2.6.0)
   const treadmill = exercises.find((e) => e.id === 'def-tapis-roulant')
@@ -119,6 +154,44 @@ async function main() {
   console.log('delete esercizio condiviso:', sharedErr)
   if (!sharedErr) throw new Error('esercizio condiviso eliminabile')
   getDb().run('DELETE FROM exercises WHERE id = ?', [sharedId])
+
+  // migrazione una tantum: gli esercizi creati prima della 2.7.0 vanno in coda
+  const legacyId = 'legacy-share-1'
+  getDb().run(
+    `INSERT INTO exercises (id, user_id, name, muscle, equipment, tracking, is_default, created_at, updated_at)
+     VALUES (?, ?, 'Legacy Press', 'Petto', 'Macchina', 'reps', 0, ?, ?)`,
+    [legacyId, user.id, '2026-10-01T10:00:00.000Z', '2026-10-01T10:00:00.000Z'],
+  )
+  localStorage.setItem('palestralogger:account-token', 'token-di-prova-0123456789abcdef')
+  await migrateLegacyExercises(user.id)
+  let shareQueue = readShareQueue(user.id)
+  console.log('coda condivisione legacy:', shareQueue)
+  if (!shareQueue.some((item) => item.exerciseId === legacyId && item.action === 'publish')) {
+    throw new Error('esercizio creato prima della 2.7.0 non accodato')
+  }
+  // la migrazione non deve ripetersi a ogni avvio
+  await migrateLegacyExercises(user.id)
+  shareQueue = readShareQueue(user.id)
+  if (shareQueue.filter((item) => item.exerciseId === legacyId).length !== 1) {
+    throw new Error('migrazione degli esercizi legacy duplicata')
+  }
+  // un esercizio legacy che arriva dopo (altra copia/dispositivo) viene preso al giro dopo
+  const legacyLateId = 'legacy-share-2'
+  getDb().run(
+    `INSERT INTO exercises (id, user_id, name, muscle, equipment, tracking, is_default, created_at, updated_at)
+     VALUES (?, ?, 'Legacy Row', 'Schiena', 'Cavi', 'time', 0, ?, ?)`,
+    [legacyLateId, user.id, '2026-09-15T09:00:00.000Z', '2026-09-15T09:00:00.000Z'],
+  )
+  await migrateLegacyExercises(user.id)
+  shareQueue = readShareQueue(user.id)
+  if (!shareQueue.some((item) => item.exerciseId === legacyLateId)) {
+    throw new Error('esercizio legacy arrivato dopo non accodato')
+  }
+  getDb().run('DELETE FROM exercises WHERE id = ?', [legacyLateId])
+  getDb().run('DELETE FROM exercises WHERE id = ?', [legacyId])
+  writeShareQueue(user.id, [])
+  localStorage.clear()
+  console.log('migrazione legacy: OK')
 
   const id = saveWorkout(user.id, {
     date: '2026-10-24',

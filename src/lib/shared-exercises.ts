@@ -3,8 +3,10 @@ import { getExercise, parseTracking } from '../db/queries'
 import { getToken } from './account'
 import { uploadLocalExercisePhoto } from './photo'
 import {
+  readMigratedLegacy,
   readSharedCache,
   readShareQueue,
+  writeMigratedLegacy,
   writeSharedCache,
   writeShareQueue,
   type SharedExerciseRecord,
@@ -22,6 +24,13 @@ import type { ExerciseTracking, Muscle } from './types'
 
 const API = '/api/exercises'
 const CACHE_TTL = 5 * 60_000
+/** Massimo di pubblicazioni per giro: le altre restano in coda. */
+const MAX_PER_RUN = 15
+/**
+ * Data del rilascio 2.7.0 (prima push della libreria comune): gli esercizi
+ * creati prima sono quelli da portare automaticamente nella libreria comune.
+ */
+const LEGACY_CUTOFF = '2026-11-14T16:30:21.000Z'
 const MUSCLES = new Set<Muscle>([
   'Petto',
   'Schiena',
@@ -122,6 +131,7 @@ function normalizeItems(raw: unknown): SharedExerciseRecord[] {
     items.push({
       id,
       name,
+      alias: String(e.alias ?? '').slice(0, 64),
       muscle: muscle as Muscle,
       equipment: String(e.equipment ?? ''),
       tracking: (e.tracking === 'time' ? 'time' : 'reps') as ExerciseTracking,
@@ -139,12 +149,13 @@ function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
   const local = query<{
     id: string
     name: string
+    alias: string | null
     muscle: string
     equipment: string
     tracking: string | null
     updated_at: string
   }>(
-    `SELECT id, name, muscle, equipment, tracking, updated_at
+    `SELECT id, name, alias, muscle, equipment, tracking, updated_at
        FROM exercises WHERE user_id IS NULL AND is_default = 0`,
   )
   const localById = new Map(local.map((row) => [row.id, row]))
@@ -162,6 +173,7 @@ function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
     if (row.updated_at > item.updatedAt) continue
     if (
       row.name !== item.name ||
+      (row.alias ?? '') !== item.alias ||
       row.muscle !== item.muscle ||
       row.equipment !== item.equipment ||
       parseTracking(row.tracking, row.muscle) !== item.tracking ||
@@ -182,12 +194,12 @@ function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
 
   tx((db) => {
     const upsert = db.prepare(
-      `INSERT INTO exercises (id, user_id, name, muscle, equipment, tracking, is_default, created_at, updated_at)
-       VALUES (?, NULL, ?, ?, ?, ?, 0, ?, ?)
+      `INSERT INTO exercises (id, user_id, name, alias, muscle, equipment, tracking, is_default, created_at, updated_at)
+       VALUES (?, NULL, ?, ?, ?, ?, ?, 0, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
-         name = excluded.name, muscle = excluded.muscle, equipment = excluded.equipment,
-         tracking = excluded.tracking, user_id = NULL, is_default = 0,
-         updated_at = excluded.updated_at
+         name = excluded.name, alias = excluded.alias, muscle = excluded.muscle,
+         equipment = excluded.equipment, tracking = excluded.tracking,
+         user_id = NULL, is_default = 0, updated_at = excluded.updated_at
        WHERE excluded.updated_at >= exercises.updated_at`,
     )
     try {
@@ -195,6 +207,7 @@ function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
         upsert.run([
           item.id,
           item.name,
+          item.alias,
           item.muscle,
           item.equipment,
           item.tracking,
@@ -228,6 +241,7 @@ async function publishNow(userId: string, exerciseId: string): Promise<void> {
     exercise: {
       id: exercise.id,
       name: exercise.name,
+      alias: exercise.alias,
       muscle: exercise.muscle,
       equipment: exercise.equipment,
       tracking: exercise.tracking,
@@ -258,12 +272,45 @@ async function unpublishNow(userId: string, exerciseId: string): Promise<void> {
   })
 }
 
+/**
+ * Porta nella libreria comune gli esercizi privati creati prima del rilascio
+ * 2.7.0. Gira a ogni allineamento (economica), ma ogni id viene provato una
+ * volta sola: gli esercizi un po' alla volta arrivati da altri dispositivi
+ * vengono comunque presi, e un esercizio ritirato non viene ripubblicato.
+ * I nomi già presenti nella libreria vengono saltati dal server.
+ */
+export async function migrateLegacyExercises(userId: string): Promise<void> {
+  if (!getToken()) return
+
+  const attempted = new Set(readMigratedLegacy(userId))
+  const rows = query<{ id: string }>(
+    `SELECT id FROM exercises
+      WHERE user_id = ? AND is_default = 0
+        AND created_at <> '' AND created_at < ?
+      ORDER BY created_at ASC`,
+    [userId, LEGACY_CUTOFF],
+  ).filter((row) => !attempted.has(row.id))
+  if (rows.length === 0) return
+
+  const queue = readShareQueue(userId)
+  const queued = new Set(queue.map((item) => item.exerciseId))
+  for (const row of rows) {
+    if (!queued.has(row.id)) queue.push({ action: 'publish', exerciseId: row.id })
+    queued.add(row.id)
+    attempted.add(row.id)
+  }
+  writeShareQueue(userId, queue)
+  writeMigratedLegacy(userId, [...attempted])
+}
+
 /** Pubblica/subisce le condivisioni rimaste in coda (chiamata all'avvio e on focus). */
 export async function flushShareQueue(userId: string): Promise<void> {
   const queue = readShareQueue(userId)
   if (queue.length === 0) return
   let index = 0
   for (; index < queue.length; index++) {
+    // con molte condivisioni da fare si procede a blocchi, senza bloccare l'app
+    if (index >= MAX_PER_RUN) break
     const item = queue[index]
     try {
       if (item.action === 'publish') await publishNow(userId, item.exerciseId)
@@ -286,6 +333,8 @@ export async function syncSharedExercises(
   opts: { force?: boolean } = {},
 ): Promise<void> {
   if (!getToken()) return
+  // una tantum: gli esercizi già creati entrano nella libreria comune
+  await migrateLegacyExercises(userId)
   await flushShareQueue(userId)
 
   const cache = readSharedCache()

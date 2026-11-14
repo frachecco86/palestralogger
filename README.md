@@ -23,7 +23,9 @@ del browser o cambiare telefono non li cancella più.
   aprono con la freccia) e la cancellazione di esercizi/serie richiede la modalità «Modifica».
 - **Libreria esercizi**: ~60 esercizi principali pre-caricati (panca piana, leg press, squat, stacco,
   lat machine, trazioni, military press, curl, hip thrust, plank, cardio…), ricerca con
-  autocompletamento per nome e attrezzatura, filtro per gruppo muscolare.
+  autocompletamento per **nome, alias e attrezzatura**, filtro per gruppo muscolare. Gli esercizi
+  pre-caricati hanno già gli alias più comuni («deadlift», «bench press», «treadmill»…), mentre ogni
+  esercizio personale può avere i propri.
 - **Foto esercizio**: una foto per esercizio (macchina, attrezzo, posizione), compressa sul telefono,
   visibile in miniatura accanto al nome e salvata anche nel cloud. La pagina **Esercizi** mostra la
   miniatura di ogni esercizio (con riquadro segnaposto se la foto manca) e, aprendo l'esercizio,
@@ -38,14 +40,18 @@ del browser o cambiare telefono non li cancella più.
   l'amministratore). In ogni caso le foto si modificano **solo** dalla pagina Esercizi: dentro la
   creazione/modifica di un allenamento sono in sola lettura.
 - **Peso in un tocco**: in modifica la serie ha «applica a tutte» per copiare i kg su tutte le altre.
-- **Esercizi personalizzati**: creazione e **modifica** dalla pagina Esercizi (nome, gruppo
-  muscolare, attrezzatura e misura delle serie: ripetizioni o minuti), creazione al volo dalla
-  ricerca («Crea "xyz"»); eliminabili se non usati. Il cardio nasce già in minuti, ma la misura si
-  può cambiare in entrambi i sensi.
+- **Esercizi personalizzati**: creazione e **modifica** dalla pagina Esercizi (nome, **alias**,
+  gruppo muscolare, attrezzatura e misura delle serie: ripetizioni o minuti), creazione al volo
+  dalla ricerca («Crea "xyz"»); eliminabili se non usati. Il cardio nasce già in minuti, ma la
+  misura si può cambiare in entrambi i sensi. L'alias è un campo facoltativo con altri nomi
+  separati da virgola: la ricerca trova l'esercizio con tutti.
 - **Libreria comune degli esercizi**: i nuovi esercizi entrano nella libreria condivisa da tutti gli
   account (interruttore «Disponibile a tutti», acceso di default). Ognuno vede quelli degli altri
   con l'etichetta **condiviso** e il nome di chi li ha proposti; solo l'autore può modificarli o
   ritirarli. Funziona anche offline: la condivisione resta in coda e riparte al ritorno della rete.
+- **Passaggio automatico dei vecchi esercizi**: alla prima apertura della 2.7.x gli esercizi
+  personali creati prima del rilascio della libreria comune vengono pubblicati una volta sola
+  (a blocchi, con le foto). Gli esercizi creati dopo seguono solo l'interruttore del form.
 - **Auto-comportamento**: quando aggiungi un esercizio già fatto, vengono proposte le serie
   dell'ultima volta con il promemoria «Ultima volta …».
 - **Calendario**: vista mensile con intensità del volume per giorno, selezione giorno, elenco
@@ -94,7 +100,8 @@ Ora:
 ```
 users(id, name, created_at, updated_at,          -- id = id dell'account
       pin_hash, pin_salt, pin_length)            -- colonne legacy 1.x, non più usate
-exercises(id, user_id?, name, muscle, equipment, tracking, is_default, created_at, updated_at)
+exercises(id, user_id?, name, alias, muscle, equipment, tracking, is_default, created_at, updated_at)
+                                                 -- alias: altri nomi per la ricerca (2.8.0)
                                                  -- tracking: 'reps' | 'time' (minuti, 2.6.0)
 workouts(id, user_id, date, name, notes, created_at, updated_at)
 workout_sets(id, workout_id, exercise_id, entry_index, set_index, reps, weight, rpe)
@@ -142,6 +149,9 @@ palestralogger-exercises
 - La **libreria comune degli esercizi** si allinea con cache di 5 minuti (`/api/exercises`): pull
   all'avvio/ritorno in foreground, push delle condivisioni createsi offline dalla coda locale. Gli
   esercizi condivisi sono salvati come `user_id NULL` e non entrano nel payload personale.
+- La **migrazione una tantum** degli esercizi creati prima della 2.7.0 (`created_at` < data di
+  rilascio) accoda la pubblicazione al primo avvio; l'avvenuta migrazione è marcata in
+  `localStorage` per account, così non viene ripetuta.
 
 ## Migrazione dalla 1.x
 

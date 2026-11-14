@@ -71,6 +71,8 @@ export interface Exercise {
   id: string
   userId: string | null
   name: string
+  /** Altri nomi con cui trovare l'esercizio nella ricerca (es. «deadlift»). */
+  alias: string
   muscle: Muscle
   equipment: string
   /** Ripetizioni o minuti (vedi ExerciseTracking). */

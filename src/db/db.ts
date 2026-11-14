@@ -144,6 +144,11 @@ function migrate(database: Database) {
       "UPDATE exercises SET tracking = CASE WHEN muscle = 'Cardio' THEN 'time' ELSE 'reps' END WHERE tracking IS NULL OR tracking = ''",
     )
 
+    // 2.8.0: alias per la ricerca (es. «deadlift» per «Stacco da terra»)
+    if (columns.length > 0 && !columns.includes('alias')) {
+      database.exec("ALTER TABLE exercises ADD COLUMN alias TEXT NOT NULL DEFAULT ''")
+    }
+
     const userInfo = database.exec('PRAGMA table_info(users)')
     const userColumns = userInfo[0]?.values.map((row) => String(row[1])) ?? []
     if (userColumns.length > 0 && !userColumns.includes('updated_at')) {
@@ -168,12 +173,19 @@ function migrate(database: Database) {
 function seedDefaults(database: Database) {
   const now = new Date().toISOString()
   const stmt = database.prepare(
-    'INSERT OR IGNORE INTO exercises (id, user_id, name, muscle, equipment, tracking, is_default, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, 1, ?, ?)',
+    'INSERT OR IGNORE INTO exercises (id, user_id, name, alias, muscle, equipment, tracking, is_default, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, ?, 1, ?, ?)',
+  )
+  // I database creati prima della 2.8.0 hanno i seed senza alias: si completa
+  // senza toccare eventuali modifiche (i seed non sono modificabili).
+  const fillAlias = database.prepare(
+    "UPDATE exercises SET alias = ? WHERE id = ? AND is_default = 1 AND (alias IS NULL OR alias = '')",
   )
   for (const ex of SEED_EXERCISES) {
-    stmt.run([ex.id, ex.name, ex.muscle, ex.equipment, ex.tracking, now, now])
+    stmt.run([ex.id, ex.name, ex.alias, ex.muscle, ex.equipment, ex.tracking, now, now])
+    if (ex.alias) fillAlias.run([ex.alias, ex.id])
   }
   stmt.free()
+  fillAlias.free()
 }
 
 export function getDb(): Database {

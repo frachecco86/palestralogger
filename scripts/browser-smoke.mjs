@@ -48,6 +48,7 @@ const sharedLibrary = [
   {
     id: 'shared-remote-1',
     name: 'Rematore Kayak',
+    alias: 'kayak row, rematore kayak',
     muscle: 'Schiena',
     equipment: 'Manubri',
     tracking: 'reps',
@@ -449,6 +450,11 @@ const newNameInput = [...window.document.querySelectorAll('input')].find((i) =>
   String(i.getAttribute('placeholder') || '').includes('Chest press'),
 )
 setValue(newNameInput, 'Pressa sperimentale')
+const newAliasInput = [...window.document.querySelectorAll('input')].find((i) =>
+  String(i.getAttribute('placeholder') || '').includes('bench press, panca'),
+)
+if (!newAliasInput) throw new Error('campo alias mancante nella creazione')
+setValue(newAliasInput, 'leg press experiment, pressa prova')
 await wait(250)
 await clickText('Crea esercizio')
 await wait(800)
@@ -491,6 +497,25 @@ if (sharedLibrary.some((e) => e.name === 'Pressa sperimentale'))
 window.document.querySelector('[aria-label="Chiudi"]')?.click()
 await wait(400)
 console.log('9d. ritiro condivisione ok')
+
+// ricerca per alias: sia l'esercizio personale sia quelli pre-caricati
+const searchInput = window.document.querySelector('input[inputmode="search"]')
+if (!searchInput) throw new Error('campo di ricerca esercizi mancante')
+setValue(searchInput, 'leg press experiment')
+await wait(500)
+if (!body().includes('Pressa sperimentale'))
+  throw new Error('ricerca per alias dell’esercizio personale non funzionante')
+setValue(searchInput, 'deadlift')
+await wait(500)
+if (!body().includes('Stacco da terra'))
+  throw new Error('alias dei seed non trovato dalla ricerca')
+setValue(searchInput, 'kayak row')
+await wait(500)
+if (!body().includes('Rematore Kayak'))
+  throw new Error('alias di un esercizio condiviso non sincronizzato')
+setValue(searchInput, '')
+await wait(400)
+console.log('9e. ricerca per alias ok')
 
 // amici (API mockata; in LIVE richiederebbe account reali)
 if (!LIVE) {

@@ -49,6 +49,7 @@ interface AccountRecord {
 interface SharedExercise {
   id: string
   name: string
+  alias: string
   muscle: string
   equipment: string
   tracking: 'reps' | 'time'
@@ -180,6 +181,7 @@ function isoDate(raw: unknown, fallback: string): string {
 function normalizeExercise(raw: unknown): {
   id: string
   name: string
+  alias: string
   muscle: string
   equipment: string
   tracking: 'reps' | 'time'
@@ -195,6 +197,9 @@ function normalizeExercise(raw: unknown): {
   const name = String(input.name ?? '').trim()
   if (name.length < 2 || name.length > 48) throw new HttpError(400, 'invalid_name')
 
+  // alias facoltativo: altri nomi per la ricerca, separati da virgola
+  const alias = String(input.alias ?? '').trim().slice(0, 64)
+
   const muscle = String(input.muscle ?? '').trim()
   if (!MUSCLES.has(muscle)) throw new HttpError(400, 'invalid_muscle')
 
@@ -206,6 +211,7 @@ function normalizeExercise(raw: unknown): {
   return {
     id,
     name,
+    alias,
     muscle,
     equipment,
     tracking,
@@ -263,6 +269,7 @@ export const handler = async (event: Event) => {
       const record: SharedExercise = {
         id: input.id,
         name: input.name,
+        alias: input.alias,
         muscle: input.muscle,
         equipment: input.equipment,
         tracking: input.tracking,

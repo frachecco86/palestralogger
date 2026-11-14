@@ -17,6 +17,8 @@ export interface SyncProfile {
 export interface SyncExercise {
   id: string
   name: string
+  /** Altri nomi per la ricerca; assente nei payload creati prima della 2.8.0. */
+  alias?: string
   muscle: Muscle
   equipment: string
   /** 'reps' oppure 'time': assente nei payload creati prima della 2.6.0. */
@@ -78,6 +80,7 @@ interface RawProfile {
 interface RawExercise {
   id: string
   name: string
+  alias: string | null
   muscle: string
   equipment: string
   tracking: string | null
@@ -130,6 +133,7 @@ export function buildSyncPayload(userId: string): SyncPayload {
   ).map((e) => ({
     id: e.id,
     name: e.name,
+    alias: e.alias ?? '',
     muscle: e.muscle as Muscle,
     equipment: e.equipment,
     tracking:
@@ -281,15 +285,17 @@ export function applySyncPayload(userId: string, remote: SyncPayload | null): Sy
         const localUpdated = localExercises.get(e.id)
         if (localUpdated && localUpdated >= e.updatedAt) continue
         db.run(
-          `INSERT INTO exercises (id, user_id, name, muscle, equipment, tracking, is_default, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+          `INSERT INTO exercises (id, user_id, name, alias, muscle, equipment, tracking, is_default, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
-             name = excluded.name, muscle = excluded.muscle, equipment = excluded.equipment,
-             tracking = excluded.tracking, updated_at = excluded.updated_at`,
+             name = excluded.name, alias = excluded.alias, muscle = excluded.muscle,
+             equipment = excluded.equipment, tracking = excluded.tracking,
+             updated_at = excluded.updated_at`,
           [
             e.id,
             userId,
             e.name,
+            String(e.alias ?? '').slice(0, 64),
             e.muscle,
             e.equipment,
             e.tracking === 'time' || e.tracking === 'reps'

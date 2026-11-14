@@ -50,6 +50,8 @@ export function ExercisesScreen({
   const [newName, setNewName] = useState('')
   const [newMuscle, setNewMuscle] = useState<Muscle>('Altro')
   const [newEquipment, setNewEquipment] = useState('')
+  // alias: altri nomi per trovare l'esercizio nella ricerca
+  const [newAlias, setNewAlias] = useState('')
   // Ripetizioni o minuti: il cardio parte in minuti, poi si può cambiare.
   const [newTracking, setNewTracking] = useState<ExerciseTracking>('reps')
   const [newTrackingTouched, setNewTrackingTouched] = useState(false)
@@ -62,6 +64,7 @@ export function ExercisesScreen({
   const [editName, setEditName] = useState('')
   const [editMuscle, setEditMuscle] = useState<Muscle>('Altro')
   const [editEquipment, setEditEquipment] = useState('')
+  const [editAlias, setEditAlias] = useState('')
   const [editTracking, setEditTracking] = useState<ExerciseTracking>('reps')
   const [editShared, setEditShared] = useState(false)
   const [editErr, setEditErr] = useState<string | null>(null)
@@ -92,7 +95,9 @@ export function ExercisesScreen({
     return exercises
       .filter((e) => (muscle === 'Tutti' ? true : e.muscle === muscle))
       .filter((e) =>
-        q ? e.name.toLowerCase().includes(q) || e.equipment.toLowerCase().includes(q) : true,
+        q
+          ? [e.name, e.alias, e.equipment].some((value) => value.toLowerCase().includes(q))
+          : true,
       )
       .sort((a, b) => {
         if (a.muscle !== b.muscle) return MUSCLES.indexOf(a.muscle) - MUSCLES.indexOf(b.muscle)
@@ -209,6 +214,7 @@ export function ExercisesScreen({
     setNewName('')
     setNewMuscle('Altro')
     setNewEquipment('')
+    setNewAlias('')
     setNewTracking('reps')
     setNewTrackingTouched(false)
     setNewShared(true)
@@ -226,6 +232,7 @@ export function ExercisesScreen({
     setEditName(exercise.name)
     setEditMuscle(exercise.muscle)
     setEditEquipment(exercise.equipment)
+    setEditAlias(exercise.alias)
     setEditTracking(exercise.tracking)
     setEditShared(isSharedExercise(exercise))
     setEditErr(null)
@@ -238,6 +245,7 @@ export function ExercisesScreen({
     try {
       const updated = updateExercise(user.id, detail.id, {
         name: editName,
+        alias: editAlias,
         muscle: editMuscle,
         equipment: editEquipment,
         tracking: editTracking,
@@ -299,7 +307,14 @@ export function ExercisesScreen({
     const file = newPhoto?.file ?? null
     const shareNow = newShared
     try {
-      const ex = createExercise(user.id, newName, newMuscle, newEquipment, newTracking)
+      const ex = createExercise(
+        user.id,
+        newName,
+        newMuscle,
+        newEquipment,
+        newTracking,
+        newAlias,
+      )
       toast('Esercizio aggiunto')
       resetCreate()
       setDetail(ex)
@@ -519,6 +534,12 @@ export function ExercisesScreen({
               {detailMine && <Badge color="#7CFFB2">personalizzato</Badge>}
               {detailShared && <Badge color="#5FD4FF">condiviso</Badge>}
             </div>
+            {detail.alias && (
+              <p className="mt-1 text-[10.5px] text-faint">
+                <Icon name="search" size={11} className="mr-1 inline align-[-1px]" />
+                Si trova anche come: {detail.alias}
+              </p>
+            )}
             {detailShared && detailAuthorName && (
               <p className="mt-1 flex items-center gap-1.5 text-[10.5px] text-faint">
                 <Icon name="users" size={12} /> Disponibile a tutti · condiviso da{' '}
@@ -660,6 +681,15 @@ export function ExercisesScreen({
               maxLength={48}
             />
           </Field>
+          <Field label="Alias" hint="facoltativo — altri nomi per la ricerca">
+            <input
+              className={inputClass}
+              value={newAlias}
+              onChange={(e) => setNewAlias(e.target.value)}
+              placeholder="Es. bench press, panca, distensioni…"
+              maxLength={64}
+            />
+          </Field>
           <div>
             <span className="mb-1.5 block text-[12px] font-medium uppercase tracking-wide text-muted">
               Gruppo muscolare
@@ -765,6 +795,15 @@ export function ExercisesScreen({
               onChange={(e) => setEditName(e.target.value)}
               maxLength={48}
               autoFocus
+            />
+          </Field>
+          <Field label="Alias" hint="facoltativo — altri nomi per la ricerca">
+            <input
+              className={inputClass}
+              value={editAlias}
+              onChange={(e) => setEditAlias(e.target.value)}
+              placeholder="Es. bench press, panca, distensioni…"
+              maxLength={64}
             />
           </Field>
           <div>

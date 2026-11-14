@@ -10,6 +10,29 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.8.0',
+    title: 'Un alias per ogni esercizio',
+    items: [
+      'Ogni esercizio può avere un alias: altri nomi con cui trovarlo nella ricerca. Es. per «Stacco da terra»: deadlift, stacco.',
+      'Nella creazione e nella modifica c’è il campo facoltativo «Alias»: scrivi più nomi separati da virgola.',
+      'La ricerca guarda nome, alias e attrezzatura: «bench press», «panca» o «bilanciere» trovano lo stesso esercizio. Vale sia nella pagina Esercizi sia nel selettore dell’allenamento.',
+      'Gli esercizi pre-caricati hanno già gli alias più comuni (deadlift, bench press, OHP, pull-up, treadmill, rowing…).',
+      'Gli alias viaggiano con la sincronizzazione e con la libreria comune: chi ha condiviso un esercizio può aggiornarli per tutti.',
+      'Aprendo un esercizio vedi la riga «Si trova anche come: …», così sai quali nomi funzionano.',
+    ],
+  },
+  {
+    version: '2.7.1',
+    title: 'Anche i vecchi esercizi passano a tutti',
+    items: [
+      'Una volta sola, all’apertura dell’app, gli esercizi che avevi creato prima della libreria comune vengono condivisi automaticamente con tutti gli account, con le loro foto.',
+      'La condivisione avviene in coda e a blocchi: se hai molti esercizi ci vogliono un paio di avvii, e funziona anche se sei offline (riparte appena torni online).',
+      'Se nella libreria comune esiste già un esercizio con lo stesso nome, il tuo resta privato: puoi rinominarlo e condividerlo dalla modifica.',
+      'Dopo questo passaggio valgono le regole normali: «Disponibile a tutti» acceso o spento per ogni esercizio e solo l’autore può modificare o ritirare i propri.',
+      'Gli esercizi creati dopo il rilascio della libreria comune non vengono toccati: valgono solo le tue scelte nel form.',
+    ],
+  },
+  {
     version: '2.7.0',
     title: 'Gli esercizi sono di tutti',
     items: [

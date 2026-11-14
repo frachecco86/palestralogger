@@ -9,6 +9,7 @@ import type { ExerciseTracking, Muscle } from './types'
 export interface SharedExerciseRecord {
   id: string
   name: string
+  alias: string
   muscle: Muscle
   equipment: string
   tracking: ExerciseTracking
@@ -103,4 +104,28 @@ export function writeShareQueue(userId: string, items: ShareQueueItem[]): void {
 
 export function hasPendingShare(userId: string, exerciseId: string): boolean {
   return readShareQueue(userId).some((item) => item.exerciseId === exerciseId)
+}
+
+// ---------- migrazione una tantum degli esercizi creati prima della 2.7.0 ----------
+
+const MIGRATION_PREFIX = 'palestralogger:shared-migration:'
+
+/** Id degli esercizi legacy già passati dalla migrazione (pubblicati o saltati). */
+export function readMigratedLegacy(userId: string): string[] {
+  try {
+    const raw = localStorage.getItem(MIGRATION_PREFIX + userId)
+    if (!raw || raw === '1') return []
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function writeMigratedLegacy(userId: string, ids: string[]): void {
+  try {
+    localStorage.setItem(MIGRATION_PREFIX + userId, JSON.stringify([...new Set(ids)]))
+  } catch {
+    /* storage non disponibile */
+  }
 }

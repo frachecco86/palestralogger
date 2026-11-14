@@ -196,10 +196,14 @@ export function countWorkouts(userId: string): number {
 
 // ---------- Exercises ----------
 
+/** Lunghezza massima dell'alias di un esercizio. */
+export const MAX_ALIAS = 64
+
 interface RawExercise {
   id: string
   user_id: string | null
   name: string
+  alias: string | null
   muscle: string
   equipment: string
   tracking: string | null
@@ -218,6 +222,7 @@ const mapExercise = (r: RawExercise): Exercise => ({
   id: r.id,
   userId: r.user_id,
   name: r.name,
+  alias: r.alias ?? '',
   muscle: r.muscle as Muscle,
   equipment: r.equipment,
   tracking: parseTracking(r.tracking, r.muscle),
@@ -246,6 +251,7 @@ export function createExercise(
   muscle: Muscle,
   equipment = '',
   tracking: ExerciseTracking = defaultTracking(muscle),
+  alias = '',
 ): Exercise {
   const clean = name.trim()
   if (clean.length < 2) throw new Error('Nome esercizio troppo corto')
@@ -260,6 +266,7 @@ export function createExercise(
     id: newId(),
     userId,
     name: clean,
+    alias: alias.trim().slice(0, MAX_ALIAS),
     muscle,
     equipment: equipment.trim(),
     tracking,
@@ -268,8 +275,18 @@ export function createExercise(
     updatedAt: now,
   }
   mutate(
-    'INSERT INTO exercises (id, user_id, name, muscle, equipment, tracking, is_default, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)',
-    [ex.id, ex.userId, ex.name, ex.muscle, ex.equipment, ex.tracking, ex.createdAt, ex.updatedAt],
+    'INSERT INTO exercises (id, user_id, name, alias, muscle, equipment, tracking, is_default, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)',
+    [
+      ex.id,
+      ex.userId,
+      ex.name,
+      ex.alias,
+      ex.muscle,
+      ex.equipment,
+      ex.tracking,
+      ex.createdAt,
+      ex.updatedAt,
+    ],
   )
   return ex
 }
@@ -285,6 +302,7 @@ export function updateExercise(
   id: string,
   changes: {
     name?: string
+    alias?: string
     muscle?: Muscle
     equipment?: string
     tracking?: ExerciseTracking
@@ -299,6 +317,7 @@ export function updateExercise(
 
   const name = (changes.name ?? current.name).trim()
   if (name.length < 2) throw new Error('Nome esercizio troppo corto')
+  const alias = (changes.alias ?? current.alias).trim().slice(0, MAX_ALIAS)
   const muscle = changes.muscle ?? current.muscle
   const equipment = (changes.equipment ?? current.equipment).trim()
   const tracking = changes.tracking ?? current.tracking
@@ -311,8 +330,8 @@ export function updateExercise(
 
   const now = new Date().toISOString()
   mutate(
-    'UPDATE exercises SET name = ?, muscle = ?, equipment = ?, tracking = ?, updated_at = ? WHERE id = ?',
-    [name, muscle, equipment, tracking, now, id],
+    'UPDATE exercises SET name = ?, alias = ?, muscle = ?, equipment = ?, tracking = ?, updated_at = ? WHERE id = ?',
+    [name, alias, muscle, equipment, tracking, now, id],
   )
   const updated = getExercise(id)
   if (!updated) throw new Error('Esercizio non aggiornato')
@@ -454,6 +473,7 @@ export function getWorkout(userId: string, workoutId: string): WorkoutDetail | n
         id: row.exercise_id,
         userId: null,
         name: 'Esercizio eliminato',
+        alias: '',
         muscle: 'Altro' as Muscle,
         equipment: '',
         tracking: 'reps' as ExerciseTracking,
