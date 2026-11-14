@@ -3,6 +3,7 @@ import type { Exercise, ExerciseTracking, WorkoutEntryInput } from '../lib/types
 import { MUSCLE_COLORS, TRACKING_SHORT } from '../lib/types'
 import {
   MAX_ENTRY_NOTE,
+  cloneWorkout,
   deleteWorkout,
   getExercise,
   getExercisePhoto,
@@ -19,6 +20,7 @@ import { Button, Card, Chip, Icon, Sheet, TrackingTag, cx } from '../components/
 import { ExercisePicker } from '../components/ExercisePicker'
 import { ExercisePhotoSheet, ExerciseThumb } from '../components/ExercisePhoto'
 import { ShareWorkoutSheet } from '../components/ShareWorkoutSheet'
+import { ShareWorkoutWithUserSheet } from '../components/WorkoutShareSheet'
 
 interface EditorSet {
   key: string
@@ -140,6 +142,7 @@ export function WorkoutEditor({
   onClose,
   onSaved,
   onDeleted,
+  onOpenWorkout,
 }: {
   userId: string
   userName: string
@@ -149,6 +152,7 @@ export function WorkoutEditor({
   onClose: () => void
   onSaved: (id: string) => void
   onDeleted: () => void
+  onOpenWorkout?: (id: string) => void
 }) {
   const [loaded] = useState(() => (workoutId ? getWorkout(userId, workoutId) : null))
 
@@ -187,6 +191,8 @@ export function WorkoutEditor({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
+  const [shareUserOpen, setShareUserOpen] = useState(false)
+  const [cloning, setCloning] = useState(false)
 
   const totalSets = entries.reduce((s, e) => s + e.sets.length, 0)
   const totalVolume = entries.reduce(
@@ -373,6 +379,46 @@ export function WorkoutEditor({
       return
     }
     setShareOpen(true)
+  }
+
+  function openUserShare() {
+    if (!loaded) return
+    if (dirty) {
+      toast('Salva le modifiche prima di condividere', 'err')
+      return
+    }
+    setShareUserOpen(true)
+  }
+
+  /**
+   * Clona l'allenamento in una nuova sessione di oggi. Se ci sono modifiche non
+   * salvate si duplica quello che si vede ora, altrimenti la copia dal database.
+   */
+  function handleClone() {
+    setCloning(true)
+    try {
+      let id: string
+      if (dirty || !workoutId) {
+        const payload: WorkoutEntryInput[] = entries.map((e) => ({
+          exerciseId: e.exercise.id,
+          notes: e.notes,
+          sets: e.sets.map((s) => ({
+            reps: s.reps,
+            weight: isTimed(e.exercise) ? 0 : s.weight,
+          })),
+        }))
+        if (payload.length === 0) throw new Error('Aggiungi almeno un esercizio da duplicare')
+        id = saveWorkout(userId, { date: todayISO(), name, notes, entries: payload })
+      } else {
+        id = cloneWorkout(userId, workoutId)
+      }
+      toast('Allenamento duplicato: modificalo e salva')
+      onOpenWorkout?.(id)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Duplicazione non riuscita', 'err')
+    } finally {
+      setCloning(false)
+    }
   }
 
   if (workoutId && !loaded) {
@@ -776,6 +822,29 @@ export function WorkoutEditor({
           </button>
         )}
 
+        {loaded && (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handleClone}
+              disabled={cloning}
+              aria-label="Duplica allenamento"
+              className="press flex h-11 items-center justify-center gap-1.5 rounded-2xl border border-line2 bg-surface text-[12px] font-semibold text-text hover:border-lime/40 disabled:opacity-50"
+            >
+              <Icon name="copy" size={14} className="text-lime" />
+              {cloning ? 'Duplico…' : 'Duplica'}
+            </button>
+            <button
+              type="button"
+              onClick={openUserShare}
+              aria-label="Condividi con un utente"
+              className="press flex h-11 items-center justify-center gap-1.5 rounded-2xl border border-line2 bg-surface text-[12px] font-semibold text-text hover:border-lime/40"
+            >
+              <Icon name="users" size={14} className="text-lime" /> Invia a un utente
+            </button>
+          </div>
+        )}
+
         {workoutId && (
           <button
             type="button"
@@ -826,6 +895,16 @@ export function WorkoutEditor({
           onClose={() => setShareOpen(false)}
           workout={loaded}
           userName={userName}
+        />
+      )}
+
+      {loaded && workoutId && (
+        <ShareWorkoutWithUserSheet
+          open={shareUserOpen}
+          onClose={() => setShareUserOpen(false)}
+          userId={userId}
+          workoutId={workoutId}
+          workoutName={title}
         />
       )}
 

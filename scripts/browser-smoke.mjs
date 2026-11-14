@@ -59,6 +59,39 @@ const sharedLibrary = [
   },
 ]
 
+const workoutSent = []
+const workoutInbox = [
+  {
+    id: '1740000000000-abcdef',
+    fromUid: 'friend-1',
+    fromName: 'Luca',
+    createdAt: '2026-11-13T10:00:00.000Z',
+    workout: {
+      date: '2026-11-13',
+      name: 'Scheda di Luca',
+      notes: 'Prova condivisa',
+      entries: [
+        {
+          name: 'Panca piana',
+          muscle: 'Petto',
+          equipment: 'Bilanciere',
+          tracking: 'reps',
+          notes: '',
+          sets: [{ reps: 8, weight: 80, rpe: null }],
+        },
+        {
+          name: 'Rematore Kayak',
+          muscle: 'Schiena',
+          equipment: 'Manubri',
+          tracking: 'reps',
+          notes: '',
+          sets: [{ reps: 10, weight: 30, rpe: null }],
+        },
+      ],
+    },
+  },
+]
+
 globalThis.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : input.url
   const file = url.split('/').pop() || ''
@@ -129,6 +162,28 @@ globalThis.fetch = async (input, init) => {
       const index = sharedLibrary.findIndex((e) => e.id === body.exerciseId)
       if (index >= 0) sharedLibrary.splice(index, 1)
       return json({ ok: true, exercises: sharedLibrary })
+    }
+    return json({ ok: true })
+  }
+  if (url.includes('api/workouts')) {
+    const body = JSON.parse(init?.body || '{}')
+    if (body.action === 'users') {
+      return json({
+        users: [
+          { uid: 'friend-1', name: 'Luca' },
+          { uid: 'friend-2', name: 'Sara' },
+        ],
+      })
+    }
+    if (body.action === 'share') {
+      workoutSent.push({ toUid: body.toUid, workout: body.workout })
+      return json({ ok: true, id: '1740000000001-aaaaaa' })
+    }
+    if (body.action === 'inbox') return json({ shares: workoutInbox })
+    if (body.action === 'delete') {
+      const index = workoutInbox.findIndex((share) => share.id === body.id)
+      if (index >= 0) workoutInbox.splice(index, 1)
+      return json({ ok: true })
     }
     return json({ ok: true })
   }
@@ -368,9 +423,45 @@ if (!buttons().some((b) => aria(b) === 'Scegli la foto di sfondo'))
   throw new Error('caricamento foto di sfondo mancante')
 window.document.querySelector('[aria-label="Chiudi"]')?.click()
 await wait(400)
+
+// invio dell'allenamento a un altro utente
+await clickText('Invia a un utente')
+await wait(800)
+if (!body().includes('Condividi con un utente')) throw new Error('foglio invio utenti non aperto')
+if (!body().includes('Luca')) throw new Error('utenti non elencati')
+await clickText('Luca')
+await wait(900)
+if (workoutSent.length !== 1 || workoutSent[0].toUid !== 'friend-1')
+  throw new Error('allenamento non inviato all’utente')
+if (workoutSent[0].workout?.entries?.[0]?.name !== 'Panca piana')
+  throw new Error('payload dell’allenamento inviato errato')
+console.log('6c. invio allenamento a un utente ok')
+
+// duplicazione: nuova sessione di oggi con gli stessi esercizi
+await clickText('Duplica')
+await wait(1000)
+if (!body().includes('Panca piana')) throw new Error('clone senza esercizi')
+if (!body().includes('3 serie')) throw new Error('clone senza serie')
+console.log('6d. duplicazione allenamento ok')
+
 window.document.querySelector('[aria-label="Torna indietro"]')?.click()
-await wait(600)
+await wait(700)
 if (!body().includes('Ciao, Marco')) throw new Error('ritorno alla home dopo la condivisione fallito')
+
+// posta in arrivo: importazione di un allenamento ricevuto
+await wait(800)
+if (!body().includes('Allenamenti condivisi')) throw new Error('scheda allenamenti condivisi mancante')
+await clickText('Allenamenti condivisi')
+await wait(900)
+if (!body().includes('Scheda di Luca')) throw new Error('allenamento ricevuto non mostrato')
+await clickText('Importa')
+await wait(1400)
+if (!body().includes('Scheda di Luca')) throw new Error('allenamento importato non aperto')
+if (!body().includes('Panca piana')) throw new Error('esercizi importati mancanti')
+console.log('6e. import allenamento ricevuto ok')
+window.document.querySelector('[aria-label="Torna indietro"]')?.click()
+await wait(800)
+if (!body().includes('Ciao, Marco')) throw new Error('ritorno alla home dopo l’import fallito')
 
 // statistiche
 await clickText('Statistiche')

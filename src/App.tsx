@@ -392,6 +392,7 @@ export default function App() {
 
         {route.name === 'new' && (
           <WorkoutEditor
+            key={`new-${route.date ?? ''}-${route.exerciseId ?? ''}`}
             userId={user.id}
             userName={user.name}
             initialDate={route.date}
@@ -399,17 +400,20 @@ export default function App() {
             onClose={closeEditor}
             onSaved={closeEditor}
             onDeleted={closeEditor}
+            onOpenWorkout={openWorkout}
           />
         )}
 
         {route.name === 'edit' && (
           <WorkoutEditor
+            key={route.id}
             userId={user.id}
             userName={user.name}
             workoutId={route.id}
             onClose={closeEditor}
             onSaved={closeEditor}
             onDeleted={closeEditor}
+            onOpenWorkout={openWorkout}
           />
         )}
 

@@ -10,6 +10,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.9.0',
+    title: 'Allenamenti da duplicare e da condividere',
+    items: [
+      'Nuovo tasto «Duplica» nell’allenamento: crea subito una copia di oggi con gli stessi esercizi, serie e note (anche le modifiche non ancora salvate).',
+      'Nuovo tasto «Invia a un utente»: scegli un altro account e gli mandi una copia dell’allenamento con esercizi, serie e note.',
+      'Per ora tutti gli utenti si vedono: nella scelta compaiono tutti gli account, con il nome (nessuna email).',
+      'Nella home c’è la scheda «Allenamenti condivisi»: mostra quanti ne hai ricevuti e apre la posta in arrivo.',
+      'Importando un allenamento ricevuto nasce una copia di oggi: gli esercizi vengono abbinati per nome (o creati se mancano) e poi puoi modificarla e salvarla come vuoi.',
+      'Un allenamento importato viene tolto dalla posta; puoi anche eliminarlo senza importarlo.',
+      'Se il server non risponde la posta resta com’è e riprovi più tardi; l’invio richiede la rete.',
+    ],
+  },
+  {
     version: '2.8.0',
     title: 'Un alias per ogni esercizio',
     items: [

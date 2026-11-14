@@ -588,6 +588,54 @@ export function saveWorkout(userId: string, input: SaveWorkoutInput): string {
   return workoutId
 }
 
+/**
+ * Duplica un allenamento in una nuova sessione (di default quella di oggi),
+ * copiando esercizi, serie, note della sessione e note degli esercizi.
+ */
+export function cloneWorkout(userId: string, workoutId: string, date = todayISO()): string {
+  const detail = getWorkout(userId, workoutId)
+  if (!detail) throw new Error('Allenamento non trovato')
+
+  const entries: WorkoutEntryInput[] = []
+  for (const entry of detail.entries) {
+    let exercise = getExercise(entry.exercise.id)
+    if (!exercise) {
+      exercise =
+        listExercises(userId).find(
+          (candidate) => candidate.name.toLowerCase() === entry.exercise.name.toLowerCase(),
+        ) ?? null
+    }
+    if (!exercise && entry.exercise.name !== 'Esercizio eliminato') {
+      exercise = createExercise(
+        userId,
+        entry.exercise.name,
+        entry.exercise.muscle,
+        entry.exercise.equipment,
+        entry.exercise.tracking,
+        entry.exercise.alias,
+      )
+    }
+    if (!exercise) continue
+    entries.push({
+      exerciseId: exercise.id,
+      notes: entry.notes,
+      sets: entry.sets.map((set) => ({
+        reps: set.reps,
+        weight: exercise.tracking === 'time' ? 0 : set.weight,
+        rpe: set.rpe,
+      })),
+    })
+  }
+  if (entries.length === 0) throw new Error('Nessun esercizio da duplicare')
+
+  return saveWorkout(userId, {
+    date,
+    name: detail.name,
+    notes: detail.notes,
+    entries,
+  })
+}
+
 export function deleteWorkout(userId: string, workoutId: string): void {
   tx((db) => {
     db.run('DELETE FROM workout_entry_notes WHERE workout_id = ?', [workoutId])

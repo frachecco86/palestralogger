@@ -16,6 +16,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/workouts"
+  to = "/.netlify/functions/workouts"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/exercises"
   to = "/.netlify/functions/exercises"
   status = 200

@@ -1,10 +1,14 @@
+import { useEffect, useState } from 'react'
 import { useLiveData } from '../lib/live'
 import { getStats, listWorkouts } from '../db/queries'
 import type { User } from '../lib/types'
 import { addDays, formatDateLong, startOfWeek, todayISO, WEEKDAYS_MIN } from '../lib/dates'
 import { formatKg, initials, plural } from '../lib/format'
-import { Button, Card, EmptyState, Icon, SectionTitle, cx } from '../components/ui'
+import { Badge, Button, Card, EmptyState, Icon, SectionTitle, cx } from '../components/ui'
 import { WorkoutCard } from '../components/Nav'
+import { IncomingWorkoutsSheet } from '../components/WorkoutShareSheet'
+import { listIncomingWorkouts } from '../lib/workout-share'
+import { getToken } from '../lib/account'
 
 export function HomeScreen({
   user,
@@ -24,6 +28,23 @@ export function HomeScreen({
   onGoFriends: () => void
 }) {
   const today = todayISO()
+  const [incomingOpen, setIncomingOpen] = useState(false)
+  const [incomingCount, setIncomingCount] = useState(0)
+  // conta gli allenamenti ricevuti: se il server non risponde si ignora
+  useEffect(() => {
+    if (!getToken()) return
+    let alive = true
+    void listIncomingWorkouts()
+      .then((list) => {
+        if (alive) setIncomingCount(list.length)
+      })
+      .catch(() => {
+        /* offline: la posta si vede aprendo la scheda */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
   const stats = useLiveData(() => getStats(user.id, today), [user.id, today])
   const weekStart = startOfWeek(today)
   const weekWorkouts = useLiveData(
@@ -136,6 +157,29 @@ export function HomeScreen({
           </button>
         )}
       </div>
+
+      {/* allenamenti ricevuti da altri utenti */}
+      <button
+        type="button"
+        onClick={() => setIncomingOpen(true)}
+        className="press mt-3 flex w-full items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3 text-left"
+      >
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-surface2 text-lime">
+          <Icon name="download" size={17} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[13px] font-semibold leading-tight">
+            Allenamenti condivisi
+          </span>
+          <span className="block text-[10.5px] text-faint">
+            {incomingCount > 0
+              ? `${plural(incomingCount, 'allenamento da importare', 'allenamenti da importare')}`
+              : 'Nessuno in attesa'}
+          </span>
+        </span>
+        {incomingCount > 0 && <Badge color="#5FD4FF">{incomingCount}</Badge>}
+        <Icon name="right" size={14} className="shrink-0 text-faint" />
+      </button>
 
       {/* settimana */}
       <Card className="mt-3 p-3.5">
@@ -251,6 +295,17 @@ export function HomeScreen({
           </button>
         </div>
       )}
+
+      <IncomingWorkoutsSheet
+        open={incomingOpen}
+        onClose={() => setIncomingOpen(false)}
+        userId={user.id}
+        onCountChange={setIncomingCount}
+        onImported={(id) => {
+          setIncomingOpen(false)
+          onOpenWorkout(id)
+        }}
+      />
     </div>
   )
 }

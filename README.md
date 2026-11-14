@@ -59,6 +59,12 @@ del browser o cambiare telefono non li cancella più.
 - **Statistiche**: allenamenti, volume, serie, ripetizioni, giorni attivi, streak attuale e record,
   volume per gruppo muscolare, top esercizi, record stimati 1RM (Epley), grafico ultime 8 settimane.
 - **Dettaglio esercizio**: storico carico massimo per sessione, sessioni, volume, record.
+- **Duplica allenamento**: un tasto nella sessione salvata crea una copia di oggi con esercizi,
+  serie e note (usa anche le modifiche non ancora salvate).
+- **Condividi un allenamento con un utente**: scegli un altro account e gli invii una copia
+  portabile (nomi degli esercizi, serie, note). Per ora **tutti gli utenti si vedono** (solo nome,
+  nessuna email). Chi la riceve la trova nella posta in arrivo della home, la importa come
+  allenamento di oggi (esercizi abbinati per nome o creati) e poi la modifica e la salva.
 - **Condivisione come immagine**: card verticale 1080×1920 (9:16) in due versioni — **Con foto**
   (sfondo caricato dal telefono, in stile Strava) e **Solo dati** — con `navigator.share` o
   salvataggio PNG. Contiene nome, data, titolo, numero di serie, esercizi con i carichi (es. «2 da
@@ -77,8 +83,9 @@ del browser o cambiare telefono non li cancella più.
 - Tailwind CSS 4
 - SQLite via [`sql.js`](https://github.com/sql-js/sql.js) (WASM), cache locale su IndexedDB
 - `vite-plugin-pwa` (Workbox)
-- Backend: Netlify Functions + Netlify Blobs (account, dati, esercizi condivisi, foto, amici)
-- Hosting: Netlify (build statica + 4 function)
+- Backend: Netlify Functions + Netlify Blobs (account, dati, esercizi condivisi, foto, amici,
+  allenamenti condivisi)
+- Hosting: Netlify (build statica + 5 function)
 
 ## Perché non si perdono più i dati
 
@@ -133,6 +140,8 @@ palestralogger-photos
   x/<library o id account>/<esercizio> -> tombstone di cancellazione
 palestralogger-exercises
   library                      -> { exercises: [...] } libreria comune (autore, nome, gruppo, misura)
+palestralogger-workout-shares
+  s/<uid destinatario>/<ts-id> -> { fromUid, fromName, createdAt, workout } allenamento condiviso
 ```
 
 ## Sincronizzazione
@@ -176,6 +185,11 @@ palestralogger-exercises
 - Gli esercizi della **libreria comune** (creati con «Disponibile a tutti», attivo di default) sono
   visibili a tutti gli account insieme al nome dell'autore: non usare nomi con dati personali. Puoi
   ritirarli in qualsiasi momento dalla modifica dell'esercizio.
+- La **condivisione di un allenamento** è esplicita e va a un singolo utente scelto: vengono inviati
+  nome, note, esercizi e serie di quell'allenamento (non foto né id personali). Finché è attiva la
+  modalità «tutti gli utenti si vedono», l'elenco degli account è visibile a chiunque con il solo
+  nome (mai l'email). Gli allenamenti ricevuti restano nella posta finché non li importi o li
+  elimini.
 - Il PIN della 1.x non è più usato per l'accesso: la protezione è l'account. Per il blocco rapido del
   telefono resta il blocco schermo del sistema.
 
@@ -190,8 +204,8 @@ npm run preview
 ```
 
 `npm run dev` serve solo il frontend: le function (`/api/account`, `/api/exercises`, `/api/photo`,
-`/api/social`) richiedono `npx netlify dev` con il sito linkato, perché usano Netlify Blobs. Senza
-backend l'app resta usabile in locale ma non sincronizza.
+`/api/social`, `/api/workouts`) richiedono `npx netlify dev` con il sito linkato, perché usano
+Netlify Blobs. Senza backend l'app resta usabile in locale ma non sincronizza.
 
 Le icone si rigenerano con `npm run icons` (encoder PNG interno, nessuna dipendenza).
 Test del layer dati (SQLite, merge sync, adozione dei dati locali): `npm run smoke`.
@@ -205,11 +219,13 @@ src/
   db/          SQLite: bootstrap, schema, seed esercizi, query tipizzate, sync payload/merge,
                foto esercizio (BLOB locale)
   lib/         account (API + sessione), sync, date, formattazione, sessione locale,
-               hook live data, social, share-card (immagine allenamento)
-  components/  UI kit, bottom nav, picker esercizi, toaster, foglio condivisione, card account
+               hook live data, social, share-card (immagine allenamento),
+               workout-share (condivisione/import allenamenti)
+  components/  UI kit, bottom nav, picker esercizi, toaster, fogli di condivisione, card account
   screens/     Auth, Home, WorkoutEditor, Calendario, Statistiche, Esercizi, Profilo, Amici
 netlify/
   functions/   account.ts (registrazione/accesso/sync/recovery), photo.ts (foto esercizi),
+               exercises.ts (libreria comune), workouts.ts (condivisione allenamenti),
                social.ts (amici)
 scripts/       copia wasm, generazione icone, smoke test
 ```

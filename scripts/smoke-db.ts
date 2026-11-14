@@ -14,6 +14,7 @@ import {
   checkPin,
   listExercises,
   saveWorkout,
+  cloneWorkout,
   getWorkout,
   listWorkouts,
   getStats,
@@ -26,6 +27,8 @@ import {
   renameUser,
 } from '../src/db/queries'
 import { migrateLegacyExercises } from '../src/lib/shared-exercises'
+import { importIncomingWorkout } from '../src/lib/workout-share'
+import { todayISO } from '../src/lib/dates'
 import { readShareQueue, writeShareQueue } from '../src/lib/shared-cache'
 
 // localStorage minimale: serve per testare cache e coda della libreria comune
@@ -221,6 +224,76 @@ async function main() {
   console.log('note esercizio:', JSON.stringify(detail.entries[0].notes), '| senza nota:', JSON.stringify(detail.entries[1].notes))
   if (detail.entries[0].notes !== 'Presa larga, spalle basse') throw new Error('nota esercizio persa')
   if (detail.entries[1].notes !== '') throw new Error('nota esercizio inventata')
+
+  // clonazione: nuova sessione con gli stessi esercizi, serie e note
+  const clonedId = cloneWorkout(user.id, id, '2026-10-30')
+  const cloned = getWorkout(user.id, clonedId)
+  if (!cloned || clonedId === id) throw new Error('clone non creato')
+  if (cloned.date !== '2026-10-30') throw new Error('data del clone errata')
+  if (cloned.entries.length !== detail.entries.length) throw new Error('esercizi persi nel clone')
+  if (cloned.sets !== detail.sets) throw new Error('serie perse nel clone')
+  if (cloned.entries[0].notes !== 'Presa larga, spalle basse') {
+    throw new Error('note esercizio perse nel clone')
+  }
+  if (cloned.notes !== 'buone sensazioni') throw new Error('note sessione perse nel clone')
+  console.log('clone:', cloned.entries.length, 'esercizi,', cloned.sets, 'serie, note ok')
+  deleteWorkout(user.id, clonedId)
+
+  // importazione di un allenamento condiviso (esercizio esistente + nuovo + cardio)
+  const importedId = await importIncomingWorkout(user.id, {
+    id: '1700000000000-abcdef',
+    fromUid: 'uid-luca',
+    fromName: 'Luca',
+    createdAt: new Date().toISOString(),
+    workout: {
+      date: '2026-10-20',
+      name: 'Scheda di Luca',
+      notes: 'Prova condivisa',
+      entries: [
+        {
+          name: 'Panca piana',
+          muscle: 'Petto',
+          equipment: 'Bilanciere',
+          tracking: 'reps',
+          notes: 'fermo al petto',
+          sets: [{ reps: 8, weight: 80, rpe: null }],
+        },
+        {
+          name: 'Rematore Kayak',
+          muscle: 'Schiena',
+          equipment: 'Manubri',
+          tracking: 'reps',
+          notes: '',
+          sets: [{ reps: 10, weight: 32.5, rpe: 8 }],
+        },
+        {
+          name: 'Tapis roulant',
+          muscle: 'Cardio',
+          equipment: 'Macchina',
+          tracking: 'time',
+          notes: '',
+          sets: [{ reps: 20, weight: 0, rpe: null }],
+        },
+      ],
+    },
+  })
+  const imported = getWorkout(user.id, importedId)
+  if (!imported) throw new Error('allenamento importato non creato')
+  if (imported.date !== todayISO()) throw new Error('l’importazione non usa la data di oggi')
+  if (imported.entries.length !== 3) throw new Error('esercizi importati mancanti')
+  const kayak = imported.entries.find((e) => e.exercise.name === 'Rematore Kayak')
+  if (!kayak || kayak.exercise.isDefault) throw new Error('esercizio nuovo non creato all’import')
+  if (kayak.sets[0]?.weight !== 32.5) throw new Error('carico importato errato')
+  const importedCardio = imported.entries.find((e) => e.exercise.name === 'Tapis roulant')
+  if (importedCardio?.sets[0]?.reps !== 20 || importedCardio?.sets[0]?.weight !== 0) {
+    throw new Error('minuti del cardio importati male')
+  }
+  if (imported.entries[0].exercise.name !== 'Panca piana' || imported.entries[0].sets[0]?.reps !== 8) {
+    throw new Error('esercizio esistente non abbinato all’import')
+  }
+  console.log('import:', imported.entries.length, 'esercizi,', imported.sets, 'serie, data', imported.date)
+  deleteWorkout(user.id, importedId)
+  deleteExercise(user.id, kayak.exercise.id)
 
   // aggiornando l'allenamento la nota si modifica e si può svuotare
   saveWorkout(user.id, {
