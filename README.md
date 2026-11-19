@@ -21,10 +21,12 @@ del browser o cambiare telefono non li cancella più.
   incrementi da 2,5 kg). Gli esercizi **cardio** si registrano in **minuti** (niente ripetizioni né
   peso) e accanto al nome compare l’etichetta «minuti». Ogni esercizio ha un suo campo **note**
   (tecnica, sensazioni, presa, fastidi…): si scrive in modalità «Modifica», resta visibile in lettura
-  e viene sincronizzato nel cloud. Gli esercizi di un allenamento salvato restano compressi (si
-  aprono con la freccia) e la cancellazione di esercizi/serie richiede la modalità «Modifica».
-  In «Modifica» si **trascinano gli esercizi** dalla maniglia per riordinarli (con serie e note):
-  l'ordine viene salvato e sincronizzato. La maniglia risponde anche alle frecce su/giù.
+  e viene sincronizzato nel cloud. Data, titolo e note stanno in una **card chiusa di default**
+  che si apre al tocco; gli esercizi di un allenamento salvato restano compressi (si aprono con la
+  freccia) e la cancellazione di esercizi/serie richiede la modalità «Modifica». In «Modifica» si
+  **trascinano gli esercizi** dalla maniglia per riordinarli (con serie e note): l'ordine viene
+  salvato e sincronizzato. La maniglia risponde anche alle frecce su/giù. Dopo il salvataggio di un
+  allenamento esistente si resta sulla sua pagina, senza tornare in home.
 - **Libreria esercizi**: ~60 esercizi principali pre-caricati (panca piana, leg press, squat, stacco,
   lat machine, trazioni, military press, curl, hip thrust, plank, cardio…), ricerca con
   autocompletamento per **nome, alias e attrezzatura**, filtro per gruppo muscolare. Gli esercizi

@@ -10,6 +10,15 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.11.4',
+    title: 'Più spazio per gli esercizi',
+    items: [
+      'La card con data, titolo e note della sessione ora è chiusa di default: si apre con un tocco e mostra subito un riepilogo di data e titolo.',
+      'Dopo aver salvato un allenamento già esistente non si torna più in home: si resta sulla pagina dell’allenamento, con i dati appena salvati.',
+      'Vale anche quando aggiungi un esercizio a un allenamento salvato e tocchi «Aggiorna».',
+    ],
+  },
+  {
     version: '2.11.3',
     title: 'La pagina torna a scorrere',
     items: [

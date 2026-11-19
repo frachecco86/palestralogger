@@ -12,7 +12,7 @@ import {
   saveWorkout,
   type ExercisePhoto,
 } from '../db/queries'
-import { addDays, formatDate, todayISO } from '../lib/dates'
+import { addDays, formatDate, relativeDay, todayISO } from '../lib/dates'
 import { formatKg, plural } from '../lib/format'
 import { toast } from '../lib/live'
 import { syncPhotos } from '../lib/photo'
@@ -172,6 +172,8 @@ export function WorkoutEditor({
   // Rimuovere esercizi o serie è possibile solo attivando la modalità modifica.
   // Un allenamento nuovo parte già in modifica; uno salvato si apre in lettura.
   const [editMode, setEditMode] = useState(() => !loaded)
+  // Titolo, data e note stanno in una card chiusa di default: si apre al tocco
+  const [detailsOpen, setDetailsOpen] = useState(false)
   // Foto esercizio (miniatura accanto al nome), salvate in locale + cloud
   const [photos, setPhotos] = useState<Record<string, ExercisePhoto>>(() => {
     const map: Record<string, ExercisePhoto> = {}
@@ -559,57 +561,96 @@ export function WorkoutEditor({
       </header>
 
       <div className="mx-auto w-full max-w-md px-4 pb-[calc(env(safe-area-inset-bottom)+110px)] pt-4">
-        {/* data e titolo */}
-        <Card className="p-3.5 space-y-3">
-          <div className="flex items-center gap-2">
-            <label className="flex h-10 flex-1 items-center gap-2 rounded-xl bg-surface2 border border-line2 px-3">
-              <Icon name="calendar" size={16} className="text-muted" />
-              <input
-                type="date"
-                value={date}
-                max={addDays(todayISO(), 365)}
-                onChange={(e) => e.target.value && setDate(e.target.value)}
-                className="h-full flex-1 bg-transparent text-[13.5px] outline-none"
-                aria-label="Data allenamento"
-              />
-            </label>
-            <Chip active={date === todayISO()} onClick={() => setDate(todayISO())}>
-              Oggi
-            </Chip>
-            <Chip active={date === addDays(todayISO(), -1)} onClick={() => setDate(addDays(todayISO(), -1))}>
-              Ieri
-            </Chip>
-          </div>
-
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Titolo (opzionale) — es. Push A"
-            maxLength={40}
-            className="w-full rounded-xl bg-surface2 border border-line2 px-3 py-2.5 text-[14px] outline-none placeholder:text-faint focus:border-lime/60"
-          />
-
-          <div>
-            <div className="mb-1 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-faint">
-              <Icon name="edit" size={11} /> Note della sessione
-            </div>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              maxLength={500}
-              aria-label="Note della sessione"
-              placeholder="Come è andata? Recupero, tecnica, sensazioni…"
-              className="w-full resize-none rounded-xl bg-surface2 border border-line2 px-3 py-2.5 text-[13px] outline-none placeholder:text-faint focus:border-lime/50"
+        {/* data e titolo: chiusa di default, si apre al tocco */}
+        <Card className="overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((open) => !open)}
+            aria-expanded={detailsOpen}
+            aria-controls="workout-details"
+            aria-label="Titolo, data e note"
+            className="press flex w-full items-center gap-2.5 px-3.5 py-3 text-left"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-surface2 text-muted">
+              <Icon name="calendar" size={16} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1.5">
+                <span className="text-[13px] font-semibold">{relativeDay(date)}</span>
+                {notes.trim() !== '' && (
+                  <Icon name="edit" size={11} className="shrink-0 text-lime/80" />
+                )}
+              </span>
+              <span className="block truncate text-[11.5px] text-faint">
+                {name.trim() || 'Titolo e note della sessione'}
+              </span>
+            </span>
+            <Icon
+              name="down"
+              size={16}
+              className={cx(
+                'shrink-0 text-faint transition-transform',
+                detailsOpen && 'rotate-180',
+              )}
             />
-          </div>
+          </button>
 
-          {error && (
-            <p className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">
-              {error}
-            </p>
+          {detailsOpen && (
+            <div id="workout-details" className="space-y-3 border-t border-line px-3.5 pb-3.5 pt-3">
+              <div className="flex items-center gap-2">
+                <label className="flex h-10 flex-1 items-center gap-2 rounded-xl bg-surface2 border border-line2 px-3">
+                  <Icon name="calendar" size={16} className="text-muted" />
+                  <input
+                    type="date"
+                    value={date}
+                    max={addDays(todayISO(), 365)}
+                    onChange={(e) => e.target.value && setDate(e.target.value)}
+                    className="h-full flex-1 bg-transparent text-[13.5px] outline-none"
+                    aria-label="Data allenamento"
+                  />
+                </label>
+                <Chip active={date === todayISO()} onClick={() => setDate(todayISO())}>
+                  Oggi
+                </Chip>
+                <Chip
+                  active={date === addDays(todayISO(), -1)}
+                  onClick={() => setDate(addDays(todayISO(), -1))}
+                >
+                  Ieri
+                </Chip>
+              </div>
+
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Titolo (opzionale) — es. Push A"
+                maxLength={40}
+                className="w-full rounded-xl bg-surface2 border border-line2 px-3 py-2.5 text-[14px] outline-none placeholder:text-faint focus:border-lime/60"
+              />
+
+              <div>
+                <div className="mb-1 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-faint">
+                  <Icon name="edit" size={11} /> Note della sessione
+                </div>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  maxLength={500}
+                  aria-label="Note della sessione"
+                  placeholder="Come è andata? Recupero, tecnica, sensazioni…"
+                  className="w-full resize-none rounded-xl bg-surface2 border border-line2 px-3 py-2.5 text-[13px] outline-none placeholder:text-faint focus:border-lime/50"
+                />
+              </div>
+            </div>
           )}
         </Card>
+
+        {error && (
+          <p className="mt-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">
+            {error}
+          </p>
+        )}
 
         {/* esercizi */}
         <div className="mt-4 flex items-center justify-between gap-2">

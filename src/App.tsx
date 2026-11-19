@@ -108,6 +108,9 @@ export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [route, setRoute] = useState<Route>(() => parseHash())
+  // Dopo aver salvato un allenamento già esistente si resta sulla sua pagina:
+  // la revisione forza il ricaricamento dei dati appena salvati.
+  const [editorRevision, setEditorRevision] = useState(0)
   const version = useSyncExternalStore(subscribe, getVersion)
 
   useEffect(() => {
@@ -416,12 +419,12 @@ export default function App() {
 
         {route.name === 'edit' && (
           <WorkoutEditor
-            key={route.id}
+            key={`${route.id}:${editorRevision}`}
             userId={user.id}
             userName={user.name}
             workoutId={route.id}
             onClose={closeEditor}
-            onSaved={closeEditor}
+            onSaved={() => setEditorRevision((revision) => revision + 1)}
             onDeleted={closeEditor}
             onOpenWorkout={openWorkout}
           />
