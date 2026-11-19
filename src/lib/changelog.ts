@@ -10,6 +10,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.11.3',
+    title: 'La pagina torna a scorrere',
+    items: [
+      'Corretto un bug per cui, dopo aver chiuso due finestre sovrapposte (per esempio il dettaglio di un esercizio e la conferma di eliminazione), la pagina poteva restare bloccata e non scorrere più.',
+      'Ora lo scorrimento si sblocca appena si chiude l’ultima finestra, sia nel browser sia nell’app installata.',
+    ],
+  },
+  {
     version: '2.11.2',
     title: 'L’amministratore elimina anche gli esercizi pre-caricati',
     items: [

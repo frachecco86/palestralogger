@@ -272,6 +272,28 @@ export function SectionTitle({ children, action }: { children: ReactNode; action
 
 // ---------- Sheet ----------
 
+/**
+ * Blocco dello scroll della pagina condiviso fra tutti gli Sheet aperti.
+ * Con un semplice salva/ripristina per componente, chiudendo due Sheet
+ * sovrapposti (es. dettaglio esercizio + conferma eliminazione) il body
+ * restava con `overflow: hidden` e la pagina non scorreva più.
+ */
+let sheetLocks = 0
+let sheetPrevOverflow = ''
+
+function lockPageScroll() {
+  if (sheetLocks === 0) {
+    sheetPrevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+  }
+  sheetLocks += 1
+}
+
+function unlockPageScroll() {
+  sheetLocks = Math.max(0, sheetLocks - 1)
+  if (sheetLocks === 0) document.body.style.overflow = sheetPrevOverflow
+}
+
 export function Sheet({
   open,
   onClose,
@@ -287,15 +309,14 @@ export function Sheet({
 }) {
   useEffect(() => {
     if (!open) return
+    lockPageScroll()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
+      unlockPageScroll()
     }
   }, [open, onClose])
 

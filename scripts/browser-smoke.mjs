@@ -791,6 +791,22 @@ if (body().includes('Rematore Kayak'))
 if (sharedLibrary.some((e) => e.id === 'shared-remote-1'))
   throw new Error('eliminazione non arrivata al server')
 console.log('11b. admin elimina un esercizio della libreria comune ok')
+if (window.document.body.style.overflow !== '')
+  throw new Error('scroll della pagina bloccato dopo la chiusura degli Sheet')
+
+// annullare la conferma non deve lasciare il body bloccato
+await clickText('Panca piana')
+await wait(600)
+buttons().find((b) => aria(b) === 'Elimina Panca piana').click()
+await wait(400)
+await clickText('Annulla')
+await wait(300)
+if (window.document.body.style.overflow !== 'hidden')
+  throw new Error('il dettaglio aperto non blocca più lo sfondo')
+window.document.querySelector('[aria-label="Chiudi"]')?.click()
+await wait(400)
+if (window.document.body.style.overflow !== '')
+  throw new Error('scroll bloccato dopo la chiusura di due Sheet')
 
 // l'amministratore elimina anche un esercizio pre-caricato: sparisce per tutti
 await clickText('Panca piana')
