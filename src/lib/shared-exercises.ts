@@ -156,7 +156,7 @@ function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
     updated_at: string
   }>(
     `SELECT id, name, alias, muscle, equipment, tracking, updated_at
-       FROM exercises WHERE user_id IS NULL AND is_default = 0`,
+       FROM exercises WHERE user_id IS NULL AND is_default = 0 AND archived = 0`,
   )
   const localById = new Map(local.map((row) => [row.id, row]))
   const remoteById = new Map(items.map((item) => [item.id, item]))
@@ -199,7 +199,7 @@ function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name, alias = excluded.alias, muscle = excluded.muscle,
          equipment = excluded.equipment, tracking = excluded.tracking,
-         user_id = NULL, is_default = 0, updated_at = excluded.updated_at
+         user_id = NULL, is_default = 0, archived = 0, updated_at = excluded.updated_at
        WHERE excluded.updated_at >= exercises.updated_at`,
     )
     try {
@@ -215,13 +215,15 @@ function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
           item.updatedAt || item.createdAt || new Date().toISOString(),
         ])
       }
-      // esercizi ritirati dalla libreria comune: si tolgono da questa copia
+      // esercizi ritirati dalla libreria comune: non si vedono più, ma restano
+      // nel database se qualche allenamento passato li usa ancora (vincolo FK)
       const stale = local.filter((row) => !remoteById.has(row.id)).map((row) => row.id)
       if (stale.length > 0) {
         db.run(
-          `DELETE FROM exercises WHERE user_id IS NULL AND is_default = 0 AND id IN (${stale
-            .map(() => '?')
-            .join(',')})`,
+          `UPDATE exercises SET archived = 1
+            WHERE user_id IS NULL AND is_default = 0 AND id IN (${stale
+              .map(() => '?')
+              .join(',')})`,
           stale,
         )
       }
@@ -255,7 +257,10 @@ async function publishNow(userId: string, exerciseId: string): Promise<void> {
   // da esercizio personale a esercizio della libreria comune
   if (exercise.userId !== null) {
     tx((db) => {
-      db.run('UPDATE exercises SET user_id = NULL WHERE id = ? AND user_id = ?', [exerciseId, userId])
+      db.run('UPDATE exercises SET user_id = NULL, archived = 0 WHERE id = ? AND user_id = ?', [
+        exerciseId,
+        userId,
+      ])
     })
   }
   // la foto (se c'è) passa nella libreria condivisa
@@ -268,8 +273,36 @@ async function unpublishNow(userId: string, exerciseId: string): Promise<void> {
   writeSharedCache(items)
   // l'esercizio torna privato per chi l'aveva condiviso
   tx((db) => {
-    db.run('UPDATE exercises SET user_id = ? WHERE id = ? AND user_id IS NULL', [userId, exerciseId])
+    db.run('UPDATE exercises SET user_id = ?, archived = 0 WHERE id = ? AND user_id IS NULL', [
+      userId,
+      exerciseId,
+    ])
   })
+}
+
+/**
+ * Nasconde la riga dalla libreria locale senza cancellarla: gli allenamenti
+ * passati possono ancora citarla (vincolo di chiave esterna).
+ */
+function removeLocalShared(exerciseId: string): void {
+  tx((db) => {
+    db.run(
+      'UPDATE exercises SET archived = 1 WHERE id = ? AND user_id IS NULL AND is_default = 0',
+      [exerciseId],
+    )
+  })
+}
+
+/**
+ * Elimina definitivamente un esercizio dalla libreria comune. Il server lo
+ * consente all'autore e all'amministratore; a differenza del ritiro, la riga
+ * non torna privata a nessuno.
+ */
+async function deleteFromLibrary(exerciseId: string): Promise<void> {
+  const res = await call<LibraryResponse>('delete', { exerciseId })
+  const items = normalizeItems(res.exercises)
+  writeSharedCache(items)
+  removeLocalShared(exerciseId)
 }
 
 /**
@@ -314,6 +347,7 @@ export async function flushShareQueue(userId: string): Promise<void> {
     const item = queue[index]
     try {
       if (item.action === 'publish') await publishNow(userId, item.exerciseId)
+      else if (item.action === 'delete') await deleteFromLibrary(item.exerciseId)
       else await unpublishNow(userId, item.exerciseId)
     } catch (err) {
       if (isOffline(err)) break // si riprova al prossimo giro
@@ -381,6 +415,37 @@ export async function unshareExercise(
       const queue = readShareQueue(userId).filter((item) => item.exerciseId !== exerciseId)
       queue.push({ action: 'unpublish', exerciseId })
       writeShareQueue(userId, queue)
+      return 'queued'
+    }
+    throw err
+  }
+}
+
+/**
+ * Elimina dalla libreria comune un esercizio di chiunque: è l'azione di
+ * moderazione dell'amministratore. Offline resta in coda e riparte online;
+ * intanto l'esercizio sparisce da questo dispositivo.
+ */
+export async function deleteSharedExercise(
+  userId: string,
+  exerciseId: string,
+): Promise<'deleted' | 'queued'> {
+  try {
+    await deleteFromLibrary(exerciseId)
+    return 'deleted'
+  } catch (err) {
+    if (isOffline(err)) {
+      const queue = readShareQueue(userId).filter((item) => item.exerciseId !== exerciseId)
+      queue.push({ action: 'delete', exerciseId })
+      writeShareQueue(userId, queue)
+      // fuori anche dalla cache, altrimenti il prossimo allineamento locale lo
+      // rimetterebbe in libreria prima che la coda arrivi al server
+      const cache = readSharedCache()
+      writeSharedCache(
+        cache.items.filter((item) => item.id !== exerciseId),
+        cache.savedAt,
+      )
+      removeLocalShared(exerciseId)
       return 'queued'
     }
     throw err

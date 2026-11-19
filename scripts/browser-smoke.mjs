@@ -92,8 +92,12 @@ const workoutInbox = [
   },
 ]
 
+let offline = false
+let lastPushPayload = null
+
 globalThis.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : input.url
+  if (offline && url.includes('/api/')) throw new TypeError('offline')
   const file = url.split('/').pop() || ''
   if (file.endsWith('.wasm')) {
     if (LIVE) {
@@ -124,7 +128,10 @@ globalThis.fetch = async (input, init) => {
     }
     if (body.action === 'session') return json({ account, revision: 0 })
     if (body.action === 'pull') return json({ revision: 0, payload: null })
-    if (body.action === 'push') return json({ revision: 1, updatedAt: now })
+    if (body.action === 'push') {
+      lastPushPayload = body.payload
+      return json({ revision: 1, updatedAt: now })
+    }
     if (body.action === 'claimSyncCode') return json({ error: 'no_data' }, 404)
     if (body.action === 'delete') return json({ ok: true })
     return json({ ok: true })
@@ -579,6 +586,12 @@ console.log('9b. cardio a minuti ok')
 if (!body().includes('Rematore Kayak'))
   throw new Error('esercizio della libreria comune non mostrato')
 if (!body().includes('condiviso')) throw new Error('etichetta «condiviso» mancante')
+await clickText('Rematore Kayak')
+await wait(500)
+if (buttons().some((b) => aria(b).startsWith('Elimina')))
+  throw new Error('utente normale può eliminare un esercizio della libreria comune')
+window.document.querySelector('[aria-label="Chiudi"]')?.click()
+await wait(300)
 console.log('9b2. libreria comune ricevuta ok')
 
 // ogni utente può creare un esercizio con la propria foto
@@ -681,6 +694,43 @@ if (!body().includes('Ottima sessione')) throw new Error('nota amico non mostrat
 if (!body().includes('CHECCO digital creaction 2026')) throw new Error('footer mancante nel dettaglio amico')
 
 }
+
+// offline: l'allenamento si salva sul telefono e sale al cloud appena torna la rete
+if (!LIVE) {
+  window.location.hash = '#/home'
+  await wait(900)
+  offline = true
+  Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true })
+  window.document.querySelector('[aria-label="Nuovo allenamento"]')?.click()
+  await wait(700)
+  await clickText('Aggiungi esercizio')
+  await wait(600)
+  setValue(window.document.querySelector('input[inputmode="search"]'), 'panca')
+  await wait(600)
+  await clickText('Panca piana')
+  await wait(600)
+  setValue(window.document.querySelector('input[aria-label="ripetizioni serie 1"]'), '5')
+  setValue(window.document.querySelector('input[aria-label="peso serie 1"]'), '60')
+  await wait(250)
+  await clickText('Salva', { exact: true })
+  await wait(800)
+  if (!body().includes('Salvato sul telefono'))
+    throw new Error('avviso di salvataggio offline mancante')
+  if (!body().includes('Ciao, Marco') || !body().includes('300 kg'))
+    throw new Error('allenamento offline non visibile in home: ' + body().slice(0, 300))
+  console.log('10b. allenamento salvato offline ok')
+
+  offline = false
+  Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true })
+  window.dispatchEvent(new window.Event('online'))
+  await wait(2800)
+  const offlinePush = lastPushPayload?.workouts?.find((w) =>
+    (w.sets || []).some((s) => s.reps === 5 && s.weight === 60),
+  )
+  if (!offlinePush) throw new Error('allenamento offline non arrivato al cloud')
+  console.log('10c. sincronizzazione al ritorno della rete ok')
+}
+
 // regressione: riavvio con sessione salvata (niente schermo nero)
 window.location.hash = '#/home'
 window.document.body.innerHTML = '<div id="root"></div>'
@@ -717,6 +767,23 @@ if (!buttons().some((b) => aria(b).startsWith('Aggiungi foto a Pressa sperimenta
   throw new Error('admin non può gestire la foto di un esercizio personalizzato')
 window.document.querySelector('[aria-label="Chiudi"]')?.click()
 await wait(300)
+
+// l'amministratore elimina dalla libreria comune un esercizio di un altro autore
+await clickText('Rematore Kayak')
+await wait(600)
+if (!buttons().some((b) => aria(b) === 'Elimina Rematore Kayak'))
+  throw new Error('admin non può eliminare un esercizio della libreria comune')
+buttons().find((b) => aria(b) === 'Elimina Rematore Kayak').click()
+await wait(400)
+if (!body().includes('verrà eliminato dalla libreria comune'))
+  throw new Error('conferma di eliminazione dalla libreria comune mancante')
+await clickText('Elimina', { exact: true })
+await wait(900)
+if (body().includes('Rematore Kayak'))
+  throw new Error('esercizio ancora visibile dopo l’eliminazione')
+if (sharedLibrary.some((e) => e.id === 'shared-remote-1'))
+  throw new Error('eliminazione non arrivata al server')
+console.log('11b. admin elimina un esercizio della libreria comune ok')
 
 console.log('--- ERRORS ---')
 console.log(errors.length ? errors.join('\n') : '(none)')

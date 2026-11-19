@@ -14,8 +14,14 @@ import {
   type ExercisePhoto,
 } from '../db/queries'
 import { addExercisePhoto, canManagePhoto, removeExercisePhoto, syncPhotos } from '../lib/photo'
+import { isAdmin } from '../lib/account'
 import { isSharedAuthor, sharedAuthorName } from '../lib/shared-cache'
-import { shareExercise, syncSharedExercises, unshareExercise } from '../lib/shared-exercises'
+import {
+  deleteSharedExercise,
+  shareExercise,
+  syncSharedExercises,
+  unshareExercise,
+} from '../lib/shared-exercises'
 import { formatDate } from '../lib/dates'
 import { formatKg, formatWeight, plural } from '../lib/format'
 import { toast, useLiveData } from '../lib/live'
@@ -85,6 +91,10 @@ export function ExercisesScreen({
   }
 
   const [photos, setPhotos] = useState<Record<string, ExercisePhoto>>(readLocalPhotos)
+
+  // L'amministratore può eliminare qualsiasi esercizio, anche quelli della
+  // libreria comune proposti da altri account (moderazione).
+  const admin = isAdmin()
 
   const exercises = useLiveData(() => listExercises(user.id), [user.id])
   const aggregates = useLiveData(() => getExerciseAggregates(user.id, 500), [user.id])
@@ -346,6 +356,28 @@ export function ExercisesScreen({
       })()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Errore')
+    }
+  }
+
+  async function handleDelete() {
+    if (!detail) return
+    const target = detail
+    setConfirmDelete(false)
+    try {
+      if (isSharedExercise(target)) {
+        const outcome = await deleteSharedExercise(user.id, target.id)
+        toast(
+          outcome === 'deleted'
+            ? 'Esercizio eliminato dalla libreria comune'
+            : 'Eliminazione in coda: riparte appena torni online',
+        )
+      } else {
+        deleteExercise(user.id, target.id)
+        toast('Esercizio eliminato')
+      }
+      setDetail(null)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Errore', 'err')
     }
   }
 
@@ -634,8 +666,12 @@ export function ExercisesScreen({
                   <Icon name="edit" size={16} /> Modifica
                 </Button>
               )}
-              {detailMine && (
-                <Button variant="danger" onClick={() => setConfirmDelete(true)} aria-label="Elimina">
+              {(detailMine || admin) && !detail.isDefault && (
+                <Button
+                  variant="danger"
+                  onClick={() => setConfirmDelete(true)}
+                  ariaLabel={`Elimina ${detail.name}`}
+                >
                   <Icon name="trash" size={16} />
                 </Button>
               )}
@@ -867,28 +903,15 @@ export function ExercisesScreen({
       >
         <div className="pb-5">
           <p className="text-[13px] text-muted">
-            «{detail?.name}» verrà rimosso dalla tua libreria. Gli allenamenti passati non cambiano.
+            {detailShared
+              ? `«${detail?.name}» verrà eliminato dalla libreria comune: non sarà più disponibile per nessun account. Gli allenamenti passati non cambiano.`
+              : `«${detail?.name}» verrà rimosso dalla tua libreria. Gli allenamenti passati non cambiano.`}
           </p>
           <div className="mt-4 flex gap-2">
             <Button variant="secondary" full onClick={() => setConfirmDelete(false)}>
               Annulla
             </Button>
-            <Button
-              variant="danger"
-              full
-              onClick={() => {
-                if (!detail) return
-                try {
-                  deleteExercise(user.id, detail.id)
-                  toast('Esercizio eliminato')
-                  setConfirmDelete(false)
-                  setDetail(null)
-                } catch (e) {
-                  toast(e instanceof Error ? e.message : 'Errore', 'err')
-                  setConfirmDelete(false)
-                }
-              }}
-            >
+            <Button variant="danger" full onClick={() => void handleDelete()}>
               Elimina
             </Button>
           </div>

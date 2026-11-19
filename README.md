@@ -13,8 +13,10 @@ del browser o cambiare telefono non li cancella più.
   password senza email. È l'unico modo per rientrare se si dimentica la password.
 - **I dati ti seguono**: sull'altro telefono entri con le stesse credenziali e ritrovi profilo,
   esercizi personalizzati, allenamenti, note e statistiche.
-- **Offline-first**: in palestra l'app funziona senza rete; le modifiche si allineano appena torna
-  il segnale (in background, senza bloccare l'interfaccia).
+- **Offline-first**: in palestra l'app funziona senza rete; l'allenamento si salva subito sul
+  telefono (un avviso lo conferma) e le modifiche si allineano appena torna il segnale, in
+  background e senza bloccare l'interfaccia. Al ritorno della connessione la sincronizzazione
+  riparte da sola, senza dover riaprire l'app.
 - **Nuovo allenamento**: data, titolo opzionale, note ed esercizi con serie (ripetizioni × peso,
   incrementi da 2,5 kg). Gli esercizi **cardio** si registrano in **minuti** (niente ripetizioni né
   peso) e accanto al nome compare l’etichetta «minuti». Ogni esercizio ha un suo campo **note**
@@ -36,6 +38,10 @@ del browser o cambiare telefono non li cancella più.
   fra tutti gli account. Solo l'account amministratore (`francescochecco@gmail.com`, vedi
   `ADMIN_EMAILS` in `netlify/functions/account.ts` e `photo.ts`) può aggiungerle, sostituirle o
   rimuoverle; il server risponde `403 admin_only` agli altri account, che possono solo leggerle.
+  L'amministratore può anche **eliminare dalla pagina Esercizi qualsiasi esercizio della libreria
+  comune** (anche di un altro autore), con conferma: sparisce per tutti gli account, mentre gli
+  allenamenti passati che lo citano restano leggibili. Gli esercizi pre-caricati (`def-*`) restano
+  invece parte dell'app e non si eliminano.
 - **Foto dei propri esercizi**: chi crea un esercizio (id casuale, non `def-*`) può caricarne la foto
   già nella creazione e gestirla dalla pagina Esercizi, senza essere amministratore. Se l'esercizio
   è condiviso con tutti, la foto passa nella libreria comune e la gestisce il suo autore (o
@@ -109,9 +115,10 @@ Ora:
 ```
 users(id, name, created_at, updated_at,          -- id = id dell'account
       pin_hash, pin_salt, pin_length)            -- colonne legacy 1.x, non più usate
-exercises(id, user_id?, name, alias, muscle, equipment, tracking, is_default, created_at, updated_at)
+exercises(id, user_id?, name, alias, muscle, equipment, tracking, is_default, archived, created_at, updated_at)
                                                  -- alias: altri nomi per la ricerca (2.8.0)
                                                  -- tracking: 'reps' | 'time' (minuti, 2.6.0)
+                                                 -- archived: tolto dalla libreria ma citato dallo storico (2.11.0)
 workouts(id, user_id, date, name, notes, created_at, updated_at)
 workout_sets(id, workout_id, exercise_id, entry_index, set_index, reps, weight, rpe)
 workout_entry_notes(workout_id, exercise_id, entry_index, note)  -- note per esercizio (2.5.0)
@@ -159,7 +166,9 @@ palestralogger-workout-shares
   altre sessioni vengono revocate.
 - La **libreria comune degli esercizi** si allinea con cache di 5 minuti (`/api/exercises`): pull
   all'avvio/ritorno in foreground, push delle condivisioni createsi offline dalla coda locale. Gli
-  esercizi condivisi sono salvati come `user_id NULL` e non entrano nel payload personale.
+  esercizi condivisi sono salvati come `user_id NULL` e non entrano nel payload personale. Quando
+  un esercizio viene ritirato o eliminato dal server, la copia locale non si cancella se qualche
+  allenamento passato lo usa: viene marcata `archived = 1` e sparisce solo dalle liste.
 - La **migrazione una tantum** degli esercizi creati prima della 2.7.0 (`created_at` < data di
   rilascio) accoda la pubblicazione al primo avvio; l'avvenuta migrazione è marcata in
   `localStorage` per account, così non viene ripetuta.

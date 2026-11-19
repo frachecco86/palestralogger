@@ -40,9 +40,9 @@ export function readSharedCache(): SharedExerciseCache {
   }
 }
 
-export function writeSharedCache(items: SharedExerciseRecord[]): void {
+export function writeSharedCache(items: SharedExerciseRecord[], savedAt = Date.now()): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), items }))
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt, items }))
   } catch {
     /* storage non disponibile */
   }
@@ -67,7 +67,7 @@ export function sharedAuthorName(exerciseId: string): string {
 
 // ---------- coda delle condivisioni (funziona offline) ----------
 
-export type ShareAction = 'publish' | 'unpublish'
+export type ShareAction = 'publish' | 'unpublish' | 'delete'
 
 export interface ShareQueueItem {
   action: ShareAction
@@ -86,7 +86,7 @@ export function readShareQueue(userId: string): ShareQueueItem[] {
       (item) =>
         item &&
         typeof item.exerciseId === 'string' &&
-        (item.action === 'publish' || item.action === 'unpublish'),
+        (item.action === 'publish' || item.action === 'unpublish' || item.action === 'delete'),
     )
   } catch {
     return []

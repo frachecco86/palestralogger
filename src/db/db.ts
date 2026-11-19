@@ -135,6 +135,12 @@ function migrate(database: Database) {
     }
     database.exec("UPDATE exercises SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''")
 
+    // 2.11.0: gli esercizi tolti dalla libreria comune e già usati in
+    // allenamenti passati restano nel database ma non si vedono più.
+    if (columns.length > 0 && !columns.includes('archived')) {
+      database.exec('ALTER TABLE exercises ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
+    }
+
     // 2.6.0: gli esercizi diventano «a ripetizioni» o «a minuti». Il cardio
     // parte in minuti, tutto il resto in ripetizioni.
     if (columns.length > 0 && !columns.includes('tracking')) {

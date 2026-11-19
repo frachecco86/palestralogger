@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS exercises (
   -- 'reps' (ripetizioni) oppure 'time' (minuti, per il cardio)
   tracking TEXT NOT NULL DEFAULT '',
   is_default INTEGER NOT NULL DEFAULT 0,
+  -- esercizio tolto dalla libreria comune ma ancora citato da allenamenti
+  -- passati: resta nel database per non rompere lo storico, ma non si vede
+  archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT '',
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

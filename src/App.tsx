@@ -17,7 +17,7 @@ import { BottomNav, type Tab } from './components/Nav'
 import { Button, Icon } from './components/ui'
 import { Toaster } from './components/Toaster'
 import { todayISO } from './lib/dates'
-import { isSyncing, syncNow } from './lib/sync'
+import { isSyncing, getLastSync, syncNow } from './lib/sync'
 import { isSocialEnabled, publishSocial } from './lib/social'
 import { syncPhotos } from './lib/photo'
 import { syncSharedExercises } from './lib/shared-exercises'
@@ -201,12 +201,22 @@ export default function App() {
     }
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('focus', onVisible)
+    // appena torna la connessione si riprova subito, senza aspettare un gesto
+    const onOnline = () => run()
+    window.addEventListener('online', onOnline)
+    // se l'ultimo giro non è riuscito (o non è mai partito) si riprova da soli
+    const retry = setInterval(() => {
+      const last = getLastSync(userId)
+      if ((!last || !last.ok) && navigator.onLine) run()
+    }, 45_000)
     return () => {
       clearTimeout(start)
       if (timer) clearTimeout(timer)
+      clearInterval(retry)
       unsubscribe()
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onVisible)
+      window.removeEventListener('online', onOnline)
     }
   }, [userId])
 

@@ -440,7 +440,13 @@ export function WorkoutEditor({
         notes,
         entries: payload,
       })
-      toast(workoutId ? 'Allenamento aggiornato' : 'Allenamento salvato')
+      toast(
+        navigator.onLine
+          ? workoutId
+            ? 'Allenamento aggiornato'
+            : 'Allenamento salvato'
+          : 'Salvato sul telefono: sarà inviato al cloud appena torni online',
+      )
       onSaved(id)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Errore nel salvataggio')

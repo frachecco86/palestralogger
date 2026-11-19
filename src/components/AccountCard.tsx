@@ -29,6 +29,20 @@ export function AccountCard({ userId }: { userId: string }) {
   const [pwError, setPwError] = useState<string | null>(null)
   const [newCode, setNewCode] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [online, setOnline] = useState(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine,
+)
+
+  useEffect(() => {
+    const up = () => setOnline(true)
+    const down = () => setOnline(false)
+    window.addEventListener('online', up)
+    window.addEventListener('offline', down)
+    return () => {
+      window.removeEventListener('online', up)
+      window.removeEventListener('offline', down)
+    }
+  }, [])
 
   useEffect(() => {
     const onChange = () => setMeta(getLastSync(userId))
@@ -103,11 +117,13 @@ export function AccountCard({ userId }: { userId: string }) {
     }
   }
 
-  const status = !meta
-    ? 'In attesa della prima sincronizzazione'
-    : meta.ok
-      ? `Sincronizzato ${formatSyncTime(meta.at)}`
-      : `Ultimo tentativo ${formatSyncTime(meta.at)} non riuscito`
+  const status = !online
+    ? 'Offline: i dati restano sul telefono e si sincronizzano appena torni online'
+    : !meta
+      ? 'In attesa della prima sincronizzazione'
+      : meta.ok
+        ? `Sincronizzato ${formatSyncTime(meta.at)}`
+        : `Ultimo tentativo ${formatSyncTime(meta.at)} non riuscito`
 
   return (
     <>
@@ -121,6 +137,7 @@ export function AccountCard({ userId }: { userId: string }) {
               <div className="flex items-center gap-1.5">
                 <p className="text-[13px] font-semibold">Account cloud</p>
                 <Badge color="#C8FF3D">attivo</Badge>
+                {!online && <Badge color="#FFB86B">offline</Badge>}
                 {isAdmin(account) && <Badge color="#FFE066">admin</Badge>}
               </div>
               <p className="truncate text-[11px] text-muted">{account?.email ?? '—'}</p>
@@ -131,7 +148,7 @@ export function AccountCard({ userId }: { userId: string }) {
             <button
               type="button"
               onClick={() => void handleSync()}
-              disabled={busy || isSyncing()}
+              disabled={busy || isSyncing() || !online}
               aria-label="Sincronizza ora"
               className="press flex h-8 w-8 items-center justify-center rounded-lg bg-surface2 border border-line text-lime disabled:opacity-40"
             >

@@ -10,6 +10,17 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.11.0',
+    title: 'L’amministratore elimina gli esercizi (e si allena anche offline)',
+    items: [
+      'Eliminare un esercizio chiede sempre conferma. Se sei l’amministratore puoi togliere dalla libreria comune anche gli esercizi condivisi da altri account: spariscono per tutti.',
+      'Gli allenamenti passati che citano un esercizio eliminato restano intatti e leggibili.',
+      'Senza connessione l’allenamento si salva subito sul telefono: un avviso te lo conferma e il cloud si aggiorna appena torna la rete.',
+      'Quando la connessione torna, la sincronizzazione riparte da sola; se un tentativo non riesce l’app ci riprova anche senza riaprirla.',
+      'La card Account mostra quando sei offline e mette in pausa il tasto «Sincronizza ora».',
+    ],
+  },
+  {
     version: '2.10.1',
     title: 'Riordina trascinando gli esercizi',
     items: [

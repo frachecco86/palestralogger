@@ -234,7 +234,7 @@ const mapExercise = (r: RawExercise): Exercise => ({
 export function listExercises(userId: string): Exercise[] {
   return query<RawExercise>(
     `SELECT * FROM exercises
-     WHERE user_id IS NULL OR user_id = ?
+     WHERE (user_id IS NULL OR user_id = ?) AND archived = 0
      ORDER BY is_default DESC, name COLLATE NOCASE ASC`,
     [userId],
   ).map(mapExercise)
@@ -256,7 +256,7 @@ export function createExercise(
   const clean = name.trim()
   if (clean.length < 2) throw new Error('Nome esercizio troppo corto')
   const dup = queryOne<{ id: string }>(
-    'SELECT id FROM exercises WHERE (user_id IS NULL OR user_id = ?) AND lower(name) = lower(?)',
+    'SELECT id FROM exercises WHERE (user_id IS NULL OR user_id = ?) AND lower(name) = lower(?) AND archived = 0',
     [userId, clean],
   )
   if (dup) throw new Error('Questo esercizio esiste già')
@@ -323,7 +323,7 @@ export function updateExercise(
   const tracking = changes.tracking ?? current.tracking
 
   const dup = queryOne<{ id: string }>(
-    'SELECT id FROM exercises WHERE (user_id IS NULL OR user_id = ?) AND lower(name) = lower(?) AND id <> ?',
+    'SELECT id FROM exercises WHERE (user_id IS NULL OR user_id = ?) AND lower(name) = lower(?) AND id <> ? AND archived = 0',
     [userId, name, id],
   )
   if (dup) throw new Error('Esiste già un esercizio con questo nome')
