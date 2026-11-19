@@ -12,6 +12,7 @@ import {
   type SharedExerciseRecord,
 } from './shared-cache'
 import type { ExerciseTracking, Muscle } from './types'
+import { SYNC_PLACEHOLDER_EXERCISE_NAME } from './types'
 
 /**
  * Libreria comune degli esercizi creati dagli utenti.
@@ -200,7 +201,7 @@ function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
          name = excluded.name, alias = excluded.alias, muscle = excluded.muscle,
          equipment = excluded.equipment, tracking = excluded.tracking,
          user_id = NULL, is_default = 0, archived = 0, updated_at = excluded.updated_at
-       WHERE excluded.updated_at >= exercises.updated_at`,
+       WHERE excluded.updated_at >= exercises.updated_at OR exercises.name = ?`,
     )
     try {
       for (const item of items) {
@@ -213,6 +214,7 @@ function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
           item.tracking,
           item.createdAt || item.updatedAt || new Date().toISOString(),
           item.updatedAt || item.createdAt || new Date().toISOString(),
+          SYNC_PLACEHOLDER_EXERCISE_NAME,
         ])
       }
       // esercizi ritirati dalla libreria comune: non si vedono più, ma restano

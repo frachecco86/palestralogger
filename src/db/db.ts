@@ -1,5 +1,6 @@
 import initSqlJs, { type Database } from 'sql.js'
 import { SCHEMA_V1, SEED_EXERCISES } from './schema'
+import { SYNC_PLACEHOLDER_EXERCISE_NAME } from '../lib/types'
 
 const IDB_NAME = 'palestralogger'
 const IDB_STORE = 'sqlite'
@@ -140,6 +141,14 @@ function migrate(database: Database) {
     if (columns.length > 0 && !columns.includes('archived')) {
       database.exec('ALTER TABLE exercises ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
     }
+
+    // I vecchi segnaposto creati dalla sincronizzazione non sono esercizi veri:
+    // si nascondono e si sbloccano, così il nome vero può sostituirli appena
+    // arriva dal cloud o dalla libreria comune.
+    database.run(
+      "UPDATE exercises SET archived = 1, updated_at = '' WHERE name = ? AND archived = 0",
+      [SYNC_PLACEHOLDER_EXERCISE_NAME],
+    )
 
     // 2.6.0: gli esercizi diventano «a ripetizioni» o «a minuti». Il cardio
     // parte in minuti, tutto il resto in ripetizioni.

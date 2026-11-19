@@ -168,7 +168,9 @@ palestralogger-workout-shares
   all'avvio/ritorno in foreground, push delle condivisioni createsi offline dalla coda locale. Gli
   esercizi condivisi sono salvati come `user_id NULL` e non entrano nel payload personale. Quando
   un esercizio viene ritirato o eliminato dal server, la copia locale non si cancella se qualche
-  allenamento passato lo usa: viene marcata `archived = 1` e sparisce solo dalle liste.
+  allenamento passato lo usa: viene marcata `archived = 1` e sparisce solo dalle liste. I segnaposto
+  creati quando un allenamento cita un esercizio non ancora arrivato restano nascosti, non vengono
+  inviati al cloud e lasciano il posto al nome vero appena i dati sono disponibili.
 - La **migrazione una tantum** degli esercizi creati prima della 2.7.0 (`created_at` < data di
   rilascio) accoda la pubblicazione al primo avvio; l'avvenuta migrazione è marcata in
   `localStorage` per account, così non viene ripetuta.

@@ -26,7 +26,8 @@ import {
   updateUserPin,
   renameUser,
 } from '../src/db/queries'
-import { migrateLegacyExercises } from '../src/lib/shared-exercises'
+import { migrateLegacyExercises, syncSharedExercises } from '../src/lib/shared-exercises'
+import { SYNC_PLACEHOLDER_EXERCISE_NAME } from '../src/lib/types'
 import { importIncomingWorkout } from '../src/lib/workout-share'
 import { todayISO } from '../src/lib/dates'
 import { readShareQueue, writeShareQueue } from '../src/lib/shared-cache'
@@ -195,6 +196,126 @@ async function main() {
   writeShareQueue(user.id, [])
   localStorage.clear()
   console.log('migrazione legacy: OK')
+
+  // bug fix: un segnaposto di sincronizzazione non deve nascondere il nome vero
+  const placeholderId = 'shared-placeholder-1'
+  getDb().run(
+    `INSERT INTO exercises (id, user_id, name, muscle, equipment, tracking, is_default, archived, created_at, updated_at)
+     VALUES (?, ?, ?, 'Altro', '', 'reps', 0, 1, ?, ?)`,
+    [
+      placeholderId,
+      user.id,
+      SYNC_PLACEHOLDER_EXERCISE_NAME,
+      '2026-11-20T10:00:00.000Z',
+      '2026-11-20T10:00:00.000Z',
+    ],
+  )
+  localStorage.setItem('palestralogger:account-token', 'token-di-prova-0123456789abcdef')
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (async (_input: unknown, init?: { body?: string }) => {
+    const body = JSON.parse(String(init?.body ?? '{}'))
+    if (body.action !== 'list') throw new Error('azione inattesa: ' + body.action)
+    return new Response(
+      JSON.stringify({
+        exercises: [
+          {
+            id: placeholderId,
+            name: 'Rematore recuperato',
+            alias: '',
+            muscle: 'Schiena',
+            equipment: 'Manubri',
+            tracking: 'reps',
+            authorId: 'acct-luca',
+            authorName: 'Luca',
+            createdAt: '2026-10-01T10:00:00.000Z',
+            updatedAt: '2026-10-01T10:00:00.000Z',
+          },
+        ],
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+  }) as unknown as typeof fetch
+  try {
+    await syncSharedExercises(user.id, { force: true })
+  } finally {
+    globalThis.fetch = realFetch
+  }
+  const recovered = listExercises(user.id).find((e) => e.id === placeholderId)
+  if (recovered?.name !== 'Rematore recuperato') {
+    throw new Error('il segnaposto non è stato sostituito dal nome vero')
+  }
+  if (recovered.userId !== null) throw new Error('l’esercizio recuperato non è tornato condiviso')
+  console.log('segnaposto sostituito dal nome vero: OK')
+  getDb().run('DELETE FROM exercises WHERE id = ?', [placeholderId])
+  localStorage.clear()
+
+  // i segnaposto creati dalla sync restano nascosti e non finiscono nel cloud
+  const placeholder2 = 'missing-exercise-1'
+  const baseWorkout = {
+    id: 'workout-placeholder-1',
+    date: today,
+    name: 'Sessione con esercizio mancante',
+    notes: '',
+    createdAt: '2026-10-26T10:00:00.000Z',
+    updatedAt: '2026-10-26T10:00:00.000Z',
+    sets: [
+      {
+        id: 'set-placeholder-1',
+        exerciseId: placeholder2,
+        entryIndex: 0,
+        setIndex: 0,
+        reps: 5,
+        weight: 10,
+        rpe: null,
+      },
+    ],
+  }
+  const profilePayload = {
+    id: user.id,
+    name: user.name,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  }
+  applySyncPayload(user.id, {
+    version: 1,
+    profile: profilePayload,
+    exercises: [],
+    workouts: [baseWorkout],
+    tombstones: [],
+    savedAt: '2026-10-26T10:00:00.000Z',
+  })
+  if (listExercises(user.id).some((e) => e.id === placeholder2)) {
+    throw new Error('il segnaposto compare nella libreria')
+  }
+  if (buildSyncPayload(user.id).exercises.some((e) => e.id === placeholder2)) {
+    throw new Error('il segnaposto viene inviato al cloud')
+  }
+  applySyncPayload(user.id, {
+    version: 1,
+    profile: profilePayload,
+    exercises: [
+      {
+        id: placeholder2,
+        name: 'Rematore recuperato 2',
+        muscle: 'Schiena',
+        equipment: 'Manubri',
+        tracking: 'reps',
+        createdAt: '2026-10-01T10:00:00.000Z',
+        updatedAt: '2026-10-01T10:00:00.000Z',
+      },
+    ],
+    workouts: [baseWorkout],
+    tombstones: [],
+    savedAt: '2026-10-26T10:00:00.000Z',
+  })
+  const restoredName = listExercises(user.id).find((e) => e.id === placeholder2)
+  if (restoredName?.name !== 'Rematore recuperato 2') {
+    throw new Error('il nome vero non ha sostituito il segnaposto')
+  }
+  console.log('segnaposto sync: OK')
+  deleteWorkout(user.id, baseWorkout.id)
+  getDb().run('DELETE FROM exercises WHERE id = ?', [placeholder2])
+  localStorage.clear()
 
   const id = saveWorkout(user.id, {
     date: '2026-10-24',

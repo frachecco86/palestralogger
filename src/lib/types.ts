@@ -83,6 +83,13 @@ export interface Exercise {
 }
 
 /**
+ * Nome provvisorio usato quando la sincronizzazione incontra un allenamento
+ * che cita un esercizio non ancora arrivato sul dispositivo. Non è un
+ * esercizio vero: appena arrivano i dati veri viene sostituito (o nascosto).
+ */
+export const SYNC_PLACEHOLDER_EXERCISE_NAME = 'Esercizio sincronizzato'
+
+/**
  * Esercizio della libreria comune: non pre-caricato (`is_default` 0) e senza
  * proprietario (`user_id` NULL). Lo vede e lo usa ogni account.
  */

@@ -1,6 +1,6 @@
 import { query, queryOne, tx } from './db'
 import type { ExerciseTracking, Muscle } from '../lib/types'
-import { defaultTracking } from '../lib/types'
+import { defaultTracking, SYNC_PLACEHOLDER_EXERCISE_NAME } from '../lib/types'
 import { addDays, todayISO } from '../lib/dates'
 
 export interface SyncProfile {
@@ -128,7 +128,7 @@ export function buildSyncPayload(userId: string): SyncPayload {
   if (!profile) throw new Error('Profilo non trovato')
 
   const exercises = query<RawExercise>(
-    'SELECT * FROM exercises WHERE user_id = ? AND is_default = 0',
+    'SELECT * FROM exercises WHERE user_id = ? AND is_default = 0 AND archived = 0',
     [userId],
   ).map((e) => ({
     id: e.id,
@@ -232,7 +232,10 @@ export function applySyncPayload(userId: string, remote: SyncPayload | null): Sy
       query<RawExercise>(
         'SELECT * FROM exercises WHERE user_id = ? OR (user_id IS NULL AND is_default = 0)',
         [userId],
-      ).map((e) => [e.id, e.updated_at || e.created_at]),
+      ).map((e) => [
+        e.id,
+        { updatedAt: e.updated_at || e.created_at, name: e.name },
+      ]),
     )
     const localWorkouts = new Map(
       query<RawWorkout>('SELECT * FROM workouts WHERE user_id = ?', [userId]).map((w) => [
@@ -263,7 +266,8 @@ export function applySyncPayload(userId: string, remote: SyncPayload | null): Sy
 
       // 1. tombstone remoti
       for (const t of remote.tombstones ?? []) {
-        const updatedAt = t.kind === 'workout' ? localWorkouts.get(t.id) : localExercises.get(t.id)
+        const updatedAt =
+          t.kind === 'workout' ? localWorkouts.get(t.id) : localExercises.get(t.id)?.updatedAt
         const localTomb = localTombstones.get(`${t.kind}:${t.id}`)
         if (localTomb && localTomb >= t.deletedAt) continue
         if (updatedAt && updatedAt > t.deletedAt) continue // locale più recente: vince
@@ -280,17 +284,26 @@ export function applySyncPayload(userId: string, remote: SyncPayload | null): Sy
 
       // 2. esercizi remoti
       for (const e of remote.exercises ?? []) {
+        // i segnaposto non sono esercizi veri: non devono tornare nel cloud
+        if (e.name === SYNC_PLACEHOLDER_EXERCISE_NAME) continue
         const localTomb = localTombstones.get(`exercise:${e.id}`)
         if (localTomb && localTomb > (e.updatedAt || e.createdAt)) continue
-        const localUpdated = localExercises.get(e.id)
-        if (localUpdated && localUpdated >= e.updatedAt) continue
+        const local = localExercises.get(e.id)
+        // un segnaposto non deve mai bloccare il nome vero, anche se più recente
+        if (
+          local &&
+          local.name !== SYNC_PLACEHOLDER_EXERCISE_NAME &&
+          local.updatedAt >= e.updatedAt
+        ) {
+          continue
+        }
         db.run(
-          `INSERT INTO exercises (id, user_id, name, alias, muscle, equipment, tracking, is_default, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+          `INSERT INTO exercises (id, user_id, name, alias, muscle, equipment, tracking, is_default, archived, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              name = excluded.name, alias = excluded.alias, muscle = excluded.muscle,
              equipment = excluded.equipment, tracking = excluded.tracking,
-             updated_at = excluded.updated_at`,
+             archived = 0, updated_at = excluded.updated_at`,
           [
             e.id,
             userId,
@@ -338,10 +351,17 @@ export function applySyncPayload(userId: string, remote: SyncPayload | null): Sy
             s.exerciseId,
           ])
           if (!exercise) {
+            // segnaposto nascosto: resta solo per non lasciare orfane le serie
+            // dello storico, e viene sostituito appena arrivano i dati veri
             db.run(
-              `INSERT OR IGNORE INTO exercises (id, user_id, name, muscle, equipment, is_default, created_at, updated_at)
-               VALUES (?, ?, ?, 'Altro', '', 0, ?, ?)`,
-              [s.exerciseId, userId, 'Esercizio sincronizzato', new Date().toISOString(), new Date().toISOString()],
+              `INSERT OR IGNORE INTO exercises (id, user_id, name, muscle, equipment, is_default, archived, created_at, updated_at)
+               VALUES (?, ?, ?, 'Altro', '', 0, 1, ?, '')`,
+              [
+                s.exerciseId,
+                userId,
+                SYNC_PLACEHOLDER_EXERCISE_NAME,
+                new Date().toISOString(),
+              ],
             )
           }
           db.run(

@@ -10,6 +10,15 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.11.1',
+    title: 'I nomi degli esercizi tornano al loro posto',
+    items: [
+      'Corretto un bug per cui alcuni esercizi creati e condivisi potevano comparire come «Esercizio sincronizzato» al posto del loro nome.',
+      'I segnaposto creati dalla sincronizzazione ora restano nascosti e vengono sostituiti dal nome vero appena arrivano i dati dal cloud o dalla libreria comune.',
+      'I segnaposto non vengono più inviati al cloud e non possono più sovrascrivere il nome di un esercizio esistente.',
+    ],
+  },
+  {
     version: '2.11.0',
     title: 'L’amministratore elimina gli esercizi (e si allena anche offline)',
     items: [
