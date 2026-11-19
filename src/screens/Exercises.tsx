@@ -364,12 +364,14 @@ export function ExercisesScreen({
     const target = detail
     setConfirmDelete(false)
     try {
-      if (isSharedExercise(target)) {
+      if (isSharedExercise(target) || target.isDefault) {
         const outcome = await deleteSharedExercise(user.id, target.id)
         toast(
-          outcome === 'deleted'
-            ? 'Esercizio eliminato dalla libreria comune'
-            : 'Eliminazione in coda: riparte appena torni online',
+          outcome === 'queued'
+            ? 'Eliminazione in coda: riparte appena torni online'
+            : target.isDefault
+              ? 'Esercizio rimosso per tutti gli account'
+              : 'Esercizio eliminato dalla libreria comune',
         )
       } else {
         deleteExercise(user.id, target.id)
@@ -666,7 +668,7 @@ export function ExercisesScreen({
                   <Icon name="edit" size={16} /> Modifica
                 </Button>
               )}
-              {(detailMine || admin) && !detail.isDefault && (
+              {detailMine || admin ? (
                 <Button
                   variant="danger"
                   onClick={() => setConfirmDelete(true)}
@@ -674,7 +676,7 @@ export function ExercisesScreen({
                 >
                   <Icon name="trash" size={16} />
                 </Button>
-              )}
+              ) : null}
             </div>
           </div>
         )}
@@ -903,9 +905,11 @@ export function ExercisesScreen({
       >
         <div className="pb-5">
           <p className="text-[13px] text-muted">
-            {detailShared
-              ? `«${detail?.name}» verrà eliminato dalla libreria comune: non sarà più disponibile per nessun account. Gli allenamenti passati non cambiano.`
-              : `«${detail?.name}» verrà rimosso dalla tua libreria. Gli allenamenti passati non cambiano.`}
+            {detail?.isDefault
+              ? `«${detail.name}» è un esercizio pre-caricato: verrà rimosso dalla libreria di tutti gli account. Gli allenamenti passati non cambiano.`
+              : detailShared
+                ? `«${detail?.name}» verrà eliminato dalla libreria comune: non sarà più disponibile per nessun account. Gli allenamenti passati non cambiano.`
+                : `«${detail?.name}» verrà rimosso dalla tua libreria. Gli allenamenti passati non cambiano.`}
           </p>
           <div className="mt-4 flex gap-2">
             <Button variant="secondary" full onClick={() => setConfirmDelete(false)}>

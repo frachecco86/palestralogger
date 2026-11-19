@@ -22,6 +22,8 @@ export interface SharedExerciseRecord {
 export interface SharedExerciseCache {
   savedAt: number
   items: SharedExerciseRecord[]
+  /** Esercizi pre-caricati eliminati dall'amministratore (visibili a tutti). */
+  hiddenDefaults: string[]
 }
 
 const CACHE_KEY = 'palestralogger:shared-exercises'
@@ -29,20 +31,27 @@ const CACHE_KEY = 'palestralogger:shared-exercises'
 export function readSharedCache(): SharedExerciseCache {
   try {
     const raw = localStorage.getItem(CACHE_KEY)
-    if (!raw) return { savedAt: 0, items: [] }
+    if (!raw) return { savedAt: 0, items: [], hiddenDefaults: [] }
     const parsed = JSON.parse(raw) as Partial<SharedExerciseCache>
     return {
       savedAt: Number(parsed?.savedAt) || 0,
       items: Array.isArray(parsed?.items) ? parsed.items : [],
+      hiddenDefaults: Array.isArray(parsed?.hiddenDefaults)
+        ? parsed.hiddenDefaults.filter((id) => typeof id === 'string')
+        : [],
     }
   } catch {
-    return { savedAt: 0, items: [] }
+    return { savedAt: 0, items: [], hiddenDefaults: [] }
   }
 }
 
-export function writeSharedCache(items: SharedExerciseRecord[], savedAt = Date.now()): void {
+export function writeSharedCache(
+  items: SharedExerciseRecord[],
+  savedAt = Date.now(),
+  hiddenDefaults: string[] = [],
+): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt, items }))
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt, items, hiddenDefaults }))
   } catch {
     /* storage non disponibile */
   }

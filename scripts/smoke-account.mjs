@@ -47,6 +47,16 @@ await build({
 await build({
   ...common,
   build: {
+    ssr: resolve('netlify/functions/exercises.ts'),
+    outDir,
+    emptyOutDir: false,
+    rollupOptions: { output: { entryFileNames: 'exercises.mjs' } },
+  },
+})
+
+await build({
+  ...common,
+  build: {
     ssr: resolve('scripts/fake-blobs.ts'),
     outDir,
     emptyOutDir: false,
@@ -288,6 +298,57 @@ check('tombstone foto', !!idx2.body.deleted?.['def-panca-piana'])
 check(
   'download dopo cancellazione 404',
   (await photoCall('get', adminToken, { exerciseId: 'def-panca-piana' })).status === 404,
+)
+
+console.log('13. libreria esercizi: amministratore e pre-caricati')
+const exMod = await import(pathToFileURL(resolve(outDir, 'exercises.mjs')).href)
+async function exCall(action, token, body = {}) {
+  const res = await exMod.handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ action, token, ...body }),
+    headers: {},
+  })
+  return { status: res.statusCode, body: JSON.parse(res.body) }
+}
+const sharedEx = {
+  id: 'shared-smoke-1',
+  name: 'Rematore Smoke',
+  alias: 'smoke row',
+  muscle: 'Schiena',
+  equipment: 'Manubri',
+  tracking: 'reps',
+  createdAt: '2026-11-20T10:00:00.000Z',
+  updatedAt: '2026-11-20T10:00:00.000Z',
+}
+check(
+  'pubblicazione esercizio condiviso',
+  (await exCall('publish', a.body.token, { exercise: sharedEx })).status === 200,
+)
+check(
+  'non admin non può eliminare un pre-caricato',
+  (await exCall('delete', a.body.token, { exerciseId: 'def-panca-piana' })).status === 403,
+)
+const hideDefault = await exCall('delete', adminToken, { exerciseId: 'def-panca-piana' })
+check(
+  'admin nasconde un pre-caricato per tutti',
+  hideDefault.status === 200 && hideDefault.body.hiddenDefaults?.includes('def-panca-piana'),
+  JSON.stringify(hideDefault.body),
+)
+const exList = await exCall('list', a.body.token)
+check(
+  'la lista espone i pre-caricati nascosti',
+  exList.status === 200 && exList.body.hiddenDefaults?.includes('def-panca-piana'),
+)
+check(
+  'i def-* non si possono pubblicare',
+  (await exCall('publish', adminToken, { exercise: { ...sharedEx, id: 'def-nuovo' } })).status === 400,
+)
+const adminDelShared = await exCall('delete', adminToken, { exerciseId: sharedEx.id })
+check(
+  'admin elimina un esercizio condiviso di un altro autore',
+  adminDelShared.status === 200 &&
+    !adminDelShared.body.exercises?.some((e) => e.id === sharedEx.id),
+  JSON.stringify(adminDelShared.body),
 )
 
 console.log('')

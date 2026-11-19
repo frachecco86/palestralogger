@@ -79,6 +79,7 @@ function messageFor(code: string): string {
 
 interface LibraryResponse {
   exercises?: unknown
+  hiddenDefaults?: unknown
   updatedAt?: string
 }
 
@@ -145,8 +146,28 @@ function normalizeItems(raw: unknown): SharedExerciseRecord[] {
   return items
 }
 
+function isDefaultExerciseId(exerciseId: string): boolean {
+  return exerciseId.startsWith('def-')
+}
+
+function normalizeHiddenDefaults(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return [
+    ...new Set(
+      raw.filter(
+        (id): id is string => typeof id === 'string' && isDefaultExerciseId(id),
+      ),
+    ),
+  ]
+}
+
+/** Se il server non manda il campo (versione vecchia), tiene la copia locale. */
+function hiddenFromResponse(raw: unknown): string[] {
+  return Array.isArray(raw) ? normalizeHiddenDefaults(raw) : readSharedCache().hiddenDefaults
+}
+
 /** Scrive la libreria remota nella cache locale (solo se qualcosa è cambiato). */
-function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
+function applySharedLibrary(items: SharedExerciseRecord[], hiddenDefaults: string[]): boolean {
   const local = query<{
     id: string
     name: string
@@ -161,6 +182,12 @@ function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
   )
   const localById = new Map(local.map((row) => [row.id, row]))
   const remoteById = new Map(items.map((item) => [item.id, item]))
+  const localHidden = new Set(
+    query<{ id: string }>('SELECT id FROM exercises WHERE is_default = 1 AND archived = 1').map(
+      (row) => row.id,
+    ),
+  )
+  const hidden = new Set(hiddenDefaults)
 
   let changed = local.length !== items.length
   for (const item of items) {
@@ -188,6 +215,17 @@ function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
       if (!remoteById.has(row.id)) {
         changed = true
         break
+      }
+    }
+  }
+  if (!changed) {
+    if (localHidden.size !== hidden.size) changed = true
+    else {
+      for (const id of hidden) {
+        if (!localHidden.has(id)) {
+          changed = true
+          break
+        }
       }
     }
   }
@@ -229,6 +267,22 @@ function applySharedLibrary(items: SharedExerciseRecord[]): boolean {
           stale,
         )
       }
+      // pre-caricati eliminati dall'amministratore: nascosti a tutti
+      if (hidden.size > 0) {
+        db.run(
+          `UPDATE exercises SET archived = 1
+            WHERE is_default = 1 AND id IN (${[...hidden].map(() => '?').join(',')})`,
+          [...hidden],
+        )
+      }
+      const restore = [...localHidden].filter((id) => !hidden.has(id))
+      if (restore.length > 0) {
+        db.run(
+          `UPDATE exercises SET archived = 0
+            WHERE is_default = 1 AND id IN (${restore.map(() => '?').join(',')})`,
+          restore,
+        )
+      }
     } finally {
       upsert.free()
     }
@@ -254,7 +308,9 @@ async function publishNow(userId: string, exerciseId: string): Promise<void> {
     },
   })
   const items = normalizeItems(res.exercises)
-  if (items.length > 0) writeSharedCache(items)
+  const hidden = hiddenFromResponse(res.hiddenDefaults)
+  writeSharedCache(items, Date.now(), hidden)
+  applySharedLibrary(items, hidden)
 
   // da esercizio personale a esercizio della libreria comune
   if (exercise.userId !== null) {
@@ -272,7 +328,9 @@ async function publishNow(userId: string, exerciseId: string): Promise<void> {
 async function unpublishNow(userId: string, exerciseId: string): Promise<void> {
   const res = await call<LibraryResponse>('delete', { exerciseId })
   const items = normalizeItems(res.exercises)
-  writeSharedCache(items)
+  const hidden = hiddenFromResponse(res.hiddenDefaults)
+  writeSharedCache(items, Date.now(), hidden)
+  applySharedLibrary(items, hidden)
   // l'esercizio torna privato per chi l'aveva condiviso
   tx((db) => {
     db.run('UPDATE exercises SET user_id = ?, archived = 0 WHERE id = ? AND user_id IS NULL', [
@@ -284,27 +342,30 @@ async function unpublishNow(userId: string, exerciseId: string): Promise<void> {
 
 /**
  * Nasconde la riga dalla libreria locale senza cancellarla: gli allenamenti
- * passati possono ancora citarla (vincolo di chiave esterna).
+ * passati possono ancora citarla (vincolo di chiave esterna). Vale sia per un
+ * esercizio condiviso sia per uno pre-caricato nascosto dall'amministratore.
  */
-function removeLocalShared(exerciseId: string): void {
+function archiveLocalExercise(exerciseId: string): void {
   tx((db) => {
     db.run(
-      'UPDATE exercises SET archived = 1 WHERE id = ? AND user_id IS NULL AND is_default = 0',
+      `UPDATE exercises SET archived = 1
+        WHERE id = ? AND ((user_id IS NULL AND is_default = 0) OR is_default = 1)`,
       [exerciseId],
     )
   })
 }
 
 /**
- * Elimina definitivamente un esercizio dalla libreria comune. Il server lo
- * consente all'autore e all'amministratore; a differenza del ritiro, la riga
- * non torna privata a nessuno.
+ * Elimina un esercizio dalla libreria comune (o nasconde un pre-caricato, se
+ * l'amministratore ha scelto così). Il server risponde con la libreria e la
+ * lista aggiornata degli esercizi pre-caricati nascosti.
  */
 async function deleteFromLibrary(exerciseId: string): Promise<void> {
   const res = await call<LibraryResponse>('delete', { exerciseId })
   const items = normalizeItems(res.exercises)
-  writeSharedCache(items)
-  removeLocalShared(exerciseId)
+  const hidden = hiddenFromResponse(res.hiddenDefaults)
+  writeSharedCache(items, Date.now(), hidden)
+  applySharedLibrary(items, hidden)
 }
 
 /**
@@ -377,12 +438,13 @@ export async function syncSharedExercises(
   if (opts.force || !cache.savedAt || Date.now() - cache.savedAt > CACHE_TTL) {
     const res = await call<LibraryResponse>('list')
     const items = normalizeItems(res.exercises)
-    writeSharedCache(items)
-    applySharedLibrary(items)
+    const hidden = hiddenFromResponse(res.hiddenDefaults)
+    writeSharedCache(items, Date.now(), hidden)
+    applySharedLibrary(items, hidden)
     return
   }
   // cache ancora valida: la si riapplica (economico) per i database nuovi
-  applySharedLibrary(cache.items)
+  applySharedLibrary(cache.items, cache.hiddenDefaults)
 }
 
 /** Rende l'esercizio disponibile a tutti (o lo mette in coda se si è offline). */
@@ -424,9 +486,9 @@ export async function unshareExercise(
 }
 
 /**
- * Elimina dalla libreria comune un esercizio di chiunque: è l'azione di
- * moderazione dell'amministratore. Offline resta in coda e riparte online;
- * intanto l'esercizio sparisce da questo dispositivo.
+ * Elimina un esercizio dalla libreria comune (o un pre-caricato, se l'utente
+ * è l'amministratore): è l'azione di moderazione. Offline resta in coda e
+ * riparte online; intanto l'esercizio sparisce da questo dispositivo.
  */
 export async function deleteSharedExercise(
   userId: string,
@@ -440,14 +502,22 @@ export async function deleteSharedExercise(
       const queue = readShareQueue(userId).filter((item) => item.exerciseId !== exerciseId)
       queue.push({ action: 'delete', exerciseId })
       writeShareQueue(userId, queue)
-      // fuori anche dalla cache, altrimenti il prossimo allineamento locale lo
+      // aggiorna anche la cache, altrimenti il prossimo allineamento locale lo
       // rimetterebbe in libreria prima che la coda arrivi al server
       const cache = readSharedCache()
-      writeSharedCache(
-        cache.items.filter((item) => item.id !== exerciseId),
-        cache.savedAt,
-      )
-      removeLocalShared(exerciseId)
+      if (isDefaultExerciseId(exerciseId)) {
+        const hidden = cache.hiddenDefaults.includes(exerciseId)
+          ? cache.hiddenDefaults
+          : [...cache.hiddenDefaults, exerciseId]
+        writeSharedCache(cache.items, cache.savedAt, hidden)
+      } else {
+        writeSharedCache(
+          cache.items.filter((item) => item.id !== exerciseId),
+          cache.savedAt,
+          cache.hiddenDefaults,
+        )
+      }
+      archiveLocalExercise(exerciseId)
       return 'queued'
     }
     throw err

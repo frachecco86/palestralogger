@@ -39,9 +39,10 @@ del browser o cambiare telefono non li cancella più.
   `ADMIN_EMAILS` in `netlify/functions/account.ts` e `photo.ts`) può aggiungerle, sostituirle o
   rimuoverle; il server risponde `403 admin_only` agli altri account, che possono solo leggerle.
   L'amministratore può anche **eliminare dalla pagina Esercizi qualsiasi esercizio della libreria
-  comune** (anche di un altro autore), con conferma: sparisce per tutti gli account, mentre gli
-  allenamenti passati che lo citano restano leggibili. Gli esercizi pre-caricati (`def-*`) restano
-  invece parte dell'app e non si eliminano.
+  comune** (anche di un altro autore) **e gli esercizi pre-caricati**, con conferma: spariscono per
+  tutti gli account, mentre gli allenamenti passati che li citano restano leggibili. Anche i
+  pre-caricati (`def-*`) vengono nascosti tramite una lista sul server, così la scelta vale su ogni
+  dispositivo.
 - **Foto dei propri esercizi**: chi crea un esercizio (id casuale, non `def-*`) può caricarne la foto
   già nella creazione e gestirla dalla pagina Esercizi, senza essere amministratore. Se l'esercizio
   è condiviso con tutti, la foto passa nella libreria comune e la gestisce il suo autore (o

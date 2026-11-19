@@ -63,6 +63,12 @@ interface LibraryDoc {
   version: 1
   updatedAt: string
   exercises: SharedExercise[]
+  /**
+   * Esercizi pre-caricati (`def-*`) eliminati dall'amministratore: restano
+   * nell'app ma spariscono dalla libreria di ogni account. La lista vive sul
+   * server perché i pre-caricati non stanno nel database degli utenti.
+   */
+  hiddenDefaults: string[]
 }
 
 type Event = {
@@ -159,10 +165,27 @@ async function readLibrary(store: Stores): Promise<LibraryDoc> {
           typeof e.authorId === 'string',
       )
     : []
+  const hiddenDefaults = Array.isArray(doc?.hiddenDefaults)
+    ? [...new Set(
+        doc.hiddenDefaults.filter(
+          (id): id is string => typeof id === 'string' && isDefaultExercise(id),
+        ),
+      )]
+    : []
   return {
     version: 1,
     updatedAt: typeof doc?.updatedAt === 'string' ? doc.updatedAt : '',
     exercises,
+    hiddenDefaults,
+  }
+}
+
+function libraryResponse(library: LibraryDoc) {
+  return {
+    ok: true,
+    exercises: library.exercises,
+    hiddenDefaults: library.hiddenDefaults,
+    updatedAt: library.updatedAt,
   }
 }
 
@@ -241,10 +264,7 @@ export const handler = async (event: Event) => {
     const library = await readLibrary(store)
 
     if (action === 'list') {
-      return respond(200, {
-        exercises: library.exercises,
-        updatedAt: library.updatedAt,
-      })
+      return respond(200, libraryResponse(library))
     }
 
     if (action === 'publish') {
@@ -282,21 +302,32 @@ export const handler = async (event: Event) => {
       else library.exercises.push(record)
       library.updatedAt = new Date().toISOString()
       await writeLibrary(store, library)
-      return respond(200, { ok: true, exercises: library.exercises, updatedAt: library.updatedAt })
+      return respond(200, libraryResponse(library))
     }
 
     if (action === 'delete') {
       const id = String(body.exerciseId ?? '').trim()
       if (!EXERCISE_RE.test(id)) throw new HttpError(400, 'invalid_exercise')
+
+      // gli esercizi pre-caricati vivono nel client: si nascondono a tutti
+      // tramite questa lista, e solo l'amministratore può farlo
+      if (isDefaultExercise(id)) {
+        if (!isAdmin(account)) throw new HttpError(403, 'admin_only')
+        if (!library.hiddenDefaults.includes(id)) library.hiddenDefaults.push(id)
+        library.updatedAt = new Date().toISOString()
+        await writeLibrary(store, library)
+        return respond(200, libraryResponse(library))
+      }
+
       const entry = library.exercises.find((e) => e.id === id)
-      if (!entry) return respond(200, { ok: true, exercises: library.exercises, updatedAt: library.updatedAt })
+      if (!entry) return respond(200, libraryResponse(library))
       if (entry.authorId !== account.id && !isAdmin(account)) {
         throw new HttpError(403, 'not_author')
       }
       library.exercises = library.exercises.filter((e) => e.id !== id)
       library.updatedAt = new Date().toISOString()
       await writeLibrary(store, library)
-      return respond(200, { ok: true, exercises: library.exercises, updatedAt: library.updatedAt })
+      return respond(200, libraryResponse(library))
     }
 
     return respond(400, { error: 'invalid_action' })

@@ -59,6 +59,7 @@ const sharedLibrary = [
   },
 ]
 
+const hiddenDefaults = []
 const workoutSent = []
 const workoutInbox = [
   {
@@ -138,7 +139,7 @@ globalThis.fetch = async (input, init) => {
   }
   if (url.includes('api/exercises')) {
     const body = JSON.parse(init?.body || '{}')
-    if (body.action === 'list') return json({ exercises: sharedLibrary })
+    if (body.action === 'list') return json({ exercises: sharedLibrary, hiddenDefaults })
     if (body.action === 'publish') {
       const input = body.exercise || {}
       const index = sharedLibrary.findIndex((e) => e.id === input.id)
@@ -153,6 +154,7 @@ globalThis.fetch = async (input, init) => {
       const record = {
         id: input.id,
         name: input.name,
+        alias: input.alias || '',
         muscle: input.muscle,
         equipment: input.equipment || '',
         tracking: input.tracking === 'time' ? 'time' : 'reps',
@@ -163,12 +165,17 @@ globalThis.fetch = async (input, init) => {
       }
       if (index >= 0) sharedLibrary[index] = record
       else sharedLibrary.push(record)
-      return json({ ok: true, exercises: sharedLibrary })
+      return json({ ok: true, exercises: sharedLibrary, hiddenDefaults })
     }
     if (body.action === 'delete') {
-      const index = sharedLibrary.findIndex((e) => e.id === body.exerciseId)
-      if (index >= 0) sharedLibrary.splice(index, 1)
-      return json({ ok: true, exercises: sharedLibrary })
+      const id = String(body.exerciseId || '')
+      if (id.startsWith('def-')) {
+        if (!hiddenDefaults.includes(id)) hiddenDefaults.push(id)
+      } else {
+        const index = sharedLibrary.findIndex((e) => e.id === id)
+        if (index >= 0) sharedLibrary.splice(index, 1)
+      }
+      return json({ ok: true, exercises: sharedLibrary, hiddenDefaults })
     }
     return json({ ok: true })
   }
@@ -784,6 +791,23 @@ if (body().includes('Rematore Kayak'))
 if (sharedLibrary.some((e) => e.id === 'shared-remote-1'))
   throw new Error('eliminazione non arrivata al server')
 console.log('11b. admin elimina un esercizio della libreria comune ok')
+
+// l'amministratore elimina anche un esercizio pre-caricato: sparisce per tutti
+await clickText('Panca piana')
+await wait(600)
+if (!buttons().some((b) => aria(b) === 'Elimina Panca piana'))
+  throw new Error('admin non può eliminare un esercizio pre-caricato')
+buttons().find((b) => aria(b) === 'Elimina Panca piana').click()
+await wait(400)
+if (!body().includes('esercizio pre-caricato'))
+  throw new Error('conferma di eliminazione del pre-caricato mancante')
+await clickText('Elimina', { exact: true })
+await wait(900)
+if (body().includes('Panca piana'))
+  throw new Error('pre-caricato ancora visibile dopo l’eliminazione')
+if (!hiddenDefaults.includes('def-panca-piana'))
+  throw new Error('pre-caricato non nascosto sul server')
+console.log('11c. admin elimina un pre-caricato ok')
 
 console.log('--- ERRORS ---')
 console.log(errors.length ? errors.join('\n') : '(none)')

@@ -10,6 +10,15 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.11.2',
+    title: 'L’amministratore elimina anche gli esercizi pre-caricati',
+    items: [
+      'L’amministratore può eliminare dalla pagina Esercizi anche gli esercizi pre-caricati (panca, squat, tapis roulant…), con conferma.',
+      'La scelta vale per tutti gli account: gli esercizi spariscono dalla libreria alla sincronizzazione successiva, anche sui dispositivi nuovi.',
+      'Gli allenamenti passati che li citano restano intatti e leggibili; senza connessione l’eliminazione resta in coda.',
+    ],
+  },
+  {
     version: '2.11.1',
     title: 'I nomi degli esercizi tornano al loro posto',
     items: [
